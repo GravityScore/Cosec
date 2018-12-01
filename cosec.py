@@ -14,7 +14,7 @@ from lexer import Lexer
 from ast import AstGenerator
 from ir import IrGenerator
 from asm import AsmGenerator
-from err import CompilerError, CompilerErrorBuilder
+from err import CompilerError
 
 
 def main():
@@ -83,10 +83,14 @@ def process_files(files, exec_file):
     # generate unnecessary .o files before discovering an error with the input
     # arguments
     for file in files:
+        # Check the file's extension
         extension = os.path.splitext(file)[1]
         if extension != ".c" and extension != ".o":
-            msg = f"'{file}' must be a '.c' or '.o' file"
-            raise CompilerErrorBuilder(msg).file(file).build()
+            raise CompilerError(f"'{file}' must be a '.c' or '.o' file")
+
+        # Check we can read the file
+        if not os.access(file, os.R_OK):
+            raise CompilerError(f"failed to read file '{file}'")
 
     # Compile each .c file into a .o file with the same base file name
     object_files = []
@@ -115,7 +119,7 @@ def compile(src_file, asm_file):
     source_code = read_file(src_file)
 
     # Source code -> tokens
-    lexer = Lexer(source_code)
+    lexer = Lexer(src_file, source_code)
     tokens = lexer.tokenize()
 
     # Tokens -> AST
@@ -135,8 +139,7 @@ def compile(src_file, asm_file):
         with open(asm_file, "w") as file:
             file.write(asm_code)
     except IOError as io_err:
-        msg = f"failed to write assembly to '{asm_file}'"
-        raise CompilerErrorBuilder(msg).file(asm_file).build() from io_err
+        raise CompilerError(f"failed to write to '{asm_file}'") from io_err
 
 
 def assemble(asm_file, obj_file):
@@ -146,11 +149,19 @@ def assemble(asm_file, obj_file):
     :param asm_file: The .s file to assemble.
     :param obj_file: The path to write the .o output file to.
     """
+    # Use different assembler options depending on the platform
+    if sys.platform == "darwin":
+        assembler_options = []
+    else:
+        raise CompilerError("Only macOS is supported")
+
+    # Invoke the assembler
     try:
-        subprocess.check_call(["as", "-o", obj_file, asm_file])
+        subprocess.check_call(["as"] + assembler_options +
+                              ["-o", obj_file, asm_file])
     except subprocess.CalledProcessError as err:
         # TODO: more descriptive error
-        raise CompilerError("assembler failed") from err
+        raise CompilerError(f"assembler failed for '{asm_file}'") from err
 
 
 def link(obj_files, exec_file):
@@ -160,12 +171,19 @@ def link(obj_files, exec_file):
     :param obj_files: The set of object files to link.
     :param exec_file: The path to write the output executable to.
     """
+    # Use different linker options depending on the platform
+    if sys.platform == "darwin":
+        assembler_options = ["-macosx_version_min", "10.7", "-no_pie"]
+    else:
+        raise CompilerError("Only macOS is supported")
+
+    # Invoke the linker
     try:
-        subprocess.check_call(["ld", "-arch", "x86_64", "-macosx_version_min",
-                               "10.7", "-no_pie", "-o", exec_file] + obj_files)
+        subprocess.check_call(["ld", "-arch", "x86_64"] + assembler_options +
+                              ["-o", exec_file] + obj_files)
     except subprocess.CalledProcessError as err:
         # TODO: more descriptive error
-        raise CompilerError("linker failed") from err
+        raise CompilerError(f"linker failed for '{exec_file}'") from err
 
 
 def read_file(path):
@@ -178,8 +196,7 @@ def read_file(path):
         with open(path, "r") as file:
             return file.read()
     except IOError as err:
-        msg = f"failed to read file '{path}'"
-        raise CompilerError(msg).file(path).build() from err
+        raise CompilerError(f"failed to read file '{path}'") from err
 
 
 if __name__ == "__main__":

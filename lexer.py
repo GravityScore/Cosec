@@ -23,9 +23,10 @@ class Lexer:
         self.file = file
         self.source_code = source_code
         self.cursor = 0
-        self.line_num = 1
+        self.line_num = 0
         self.column_num = 1
         self.line = ""
+        self._new_line()
 
     def tokenize(self):
         """
@@ -158,7 +159,7 @@ class Lexer:
                   self.source_code.find("\r", self.cursor))
         if end == -1:
             end = len(self.source_code)
-        self.line = self.source_code[self.cursor:end]
+        self.line = self.source_code[self.cursor:end - 1]
 
     def _peek(self, amount):
         """

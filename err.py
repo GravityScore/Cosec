@@ -93,11 +93,42 @@ class CompilerError(Exception):
         """
         Pretty prints the compiler error to the standard output, using colors
         and proper formatting.
-
-        Any tabs within the line associated with the error are converted to 4
-        spaces, so it's displayed consistently across various terminals. The
-        printed column number is not changed, but the position at which the
-        arrow is drawn is updated.
         """
-        # TODO
-        print(Fore.RED + Style.BRIGHT + "error: " + Style.RESET_ALL + self.message)
+        # Error message
+        print(Fore.RED + Style.BRIGHT + "error: " + Style.RESET_ALL, end="")
+        print(self.message)
+
+        # File
+        if self.file is None:
+            return
+        print(Fore.BLUE + Style.BRIGHT + " --> " + Style.RESET_ALL, end="")
+        print(self.file, end="")
+
+        # Line number
+        if self.line_num is None:
+            print("")  # Finish the previous line
+            return
+        print(":" + str(self.line_num), end="")
+
+        # Column number
+        if self.column_num is None:
+            print("")  # Finish the previous line
+            return
+        print(":" + str(self.column_num))
+
+        # Source code line. We replace all tabs with 4 spaces to ensure
+        # consistent spacing across various terminals
+        if self.line is None:
+            return
+        prefix = " " + str(self.line_num) + " | "
+        print(Fore.BLUE + Style.BRIGHT + prefix + Style.RESET_ALL, end="")
+        print(self.line.replace("\t", "    "))
+
+        # Arrow. We need to account for the number of tabs we've replaced before
+        # the start of the arrow
+        if self.length is None or self.length <= 0:
+            return
+        num_tabs = self.line.count("\t", 0, self.column_num - 1)
+        padding = self.column_num - 1 + num_tabs * 3  # 3 more spaces per tab
+        print(" " * (padding + len(prefix)) + Fore.BLUE + Style.BRIGHT + "^" +
+              "~" * (self.length - 1))

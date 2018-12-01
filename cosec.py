@@ -13,6 +13,7 @@ from lexer import Lexer
 from ast import AstGenerator
 from ir import IrGenerator
 from asm import AsmGenerator
+from err import CompilerError, CompilerErrorBuilder
 
 
 def main():
@@ -23,9 +24,15 @@ def main():
     :return: The compiler's exit status as an integer; 0 for success and
     non-zero for error.
     """
-    assert_platform()
-    args = parse_args()
-    process_files(args.files, args.output)
+    # Wrap the entire compiler in a try-except for compiler errors. Any other
+    # errors indicate an internal bug in the compiler
+    try:
+        assert_platform()
+        args = parse_args()
+        process_files(args.files, args.output)
+    except CompilerError as err:
+        err.pretty_print()
+        return 1
     return 0
 
 
@@ -36,13 +43,11 @@ def assert_platform():
     """
     # Check operating system
     if sys.platform != "darwin":
-        print("Only macOS is supported!")
-        sys.exit(1)
+        raise CompilerError("Only macOS is supported (for now)")
 
     # Check processor architecture
     if platform.machine() != "x86_64":
-        print("Only x86-64 platforms are supported!")
-        sys.exit(1)
+        raise CompilerError("Only x86-64 platforms are supported (for now)")
 
 
 def parse_args():
@@ -56,7 +61,7 @@ def parse_args():
     parser.add_argument("-v", "--version", action="version",
                         version="Cosec 0.0.1")
     parser.add_argument("-o", "--output", default="a.out",
-                        help="write output to <OUTPUT>")
+                        help="write output executable to OUTPUT")
     return parser.parse_args()
 
 
@@ -76,8 +81,8 @@ def process_files(files, exec_file):
     for file in files:
         extension = os.path.splitext(file)[1]
         if extension != ".c" and extension != ".o":
-            print(f"error: '{file}' must be a '.c' or '.o' file")
-            sys.exit(1)
+            msg = f"'{file}' must be a '.c' or '.o' file"
+            raise CompilerErrorBuilder(msg).file(file).build()
 
     # Compile each .c file into a .o file with the same base file name
     object_files = []
@@ -125,9 +130,9 @@ def compile(src_file, asm_file):
     try:
         with open(asm_file, "w") as file:
             file.write(asm_code)
-    except IOError:
-        print(f"error: failed to write assembly to file '{asm_file}'")
-        sys.exit(1)
+    except IOError as io_err:
+        msg = f"failed to write assembly to '{asm_file}'"
+        raise CompilerErrorBuilder(msg).file(asm_file).build() from io_err
 
 
 def assemble(asm_file, obj_file):
@@ -139,10 +144,9 @@ def assemble(asm_file, obj_file):
     """
     try:
         subprocess.check_call(["as", "-o", obj_file, asm_file])
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as err:
         # TODO: more descriptive error
-        print("error: assembler failed")
-        sys.exit(1)
+        raise CompilerError("assembler failed") from err
 
 
 def link(obj_files, exec_file):
@@ -155,10 +159,9 @@ def link(obj_files, exec_file):
     try:
         subprocess.check_call(["ld", "-arch", "x86_64", "-macosx_version_min",
                                "10.7", "-no_pie", "-o", exec_file] + obj_files)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as err:
         # TODO: more descriptive error
-        print("error: linker failed")
-        sys.exit(1)
+        raise CompilerError("linker failed") from err
 
 
 def read_file(path):
@@ -170,9 +173,9 @@ def read_file(path):
     try:
         with open(path, "r") as file:
             return file.read()
-    except IOError:
-        print(f"error: failed to read file '{path}'")
-        sys.exit(1)
+    except IOError as err:
+        msg = f"failed to read file '{path}'"
+        raise CompilerError(msg).file(path).build() from err
 
 
 if __name__ == "__main__":

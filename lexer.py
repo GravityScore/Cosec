@@ -3,6 +3,8 @@
 # By Ben Anderson
 # December 2018
 
+from err import CompilerErrorBuilder
+
 
 class Lexer:
     """
@@ -11,11 +13,14 @@ class Lexer:
     with pre-processor directives, comments, or care about whitespace.
     """
 
-    def __init__(self, source_code):
+    def __init__(self, file, source_code):
         """
         Create a new lexer for tokenizing the given source code.
+        :param file: The path to the file the source code was taken from, for
+        use when an error occurs.
         :param source_code: The source code to tokenize.
         """
+        self.file = file
         self.source_code = source_code
         self.cursor = 0
         self.line_num = 1
@@ -29,7 +34,9 @@ class Lexer:
         """
         tokens = []
         while not self._is_eof():
-            tokens.append(self._next_token())
+            token = self._next_token()
+            if token is not None:
+                tokens.append(token)
         return tokens
 
     def _next_token(self):
@@ -38,32 +45,45 @@ class Lexer:
         the cursor to the start of the next token.
         :return: The token at the current cursor position in the source code.
         """
+        if self._is_eof():
+            return None
+
         ch = self._peek(0)
 
         # Whitespace
         if ch.isspace():
             self._consume_whitespace()
-            return self._next_token()
+            token = self._next_token()
 
         # Arithmetic
         elif ch == "+":
+            token = Token(TokenType.PLUS, 1, self)
             self._consume()
-            return Token(TokenType.PLUS, 1, self)
         elif ch == "-":
+            token = Token(TokenType.MINUS, 1, self)
             self._consume()
-            return Token(TokenType.MINUS, 1, self)
         elif ch == "*":
+            token = Token(TokenType.ASTERISK, 1, self)
             self._consume()
-            return Token(TokenType.ASTERISK, 1, self)
         elif ch == "/":
+            token = Token(TokenType.FSLASH, 1, self)
             self._consume()
-            return Token(TokenType.FSLASH, 1, self)
 
         # Values
-        elif ch.isalpha():
-            return self._ident()
+        elif ch.isalpha() or ch == "_":
+            token = self._ident()
         elif ch.isdigit():
-            return self._num()
+            token = self._num()
+
+        # Unrecognised character error
+        else:
+            raise CompilerErrorBuilder(f"unrecognised character '{ch}'") \
+                .file(self.file)                                         \
+                .location(self.line_num, self.column_num, self.line)     \
+                .arrow(1)                                                \
+                .build()
+
+        return token
 
     def _ident(self):
         """
@@ -73,10 +93,17 @@ class Lexer:
         """
         # Find the first non-alphabetic, non-numeric character
         token = Token(TokenType.IDENT, 0, self)
-        while self._peek(0).isalpha() or self._peek(0).isdigit() \
-                or self._peek(0) == "_":
+        while not self._is_eof() and (self._peek(0).isalpha() or
+                                      self._peek(0).isdigit() or
+                                      self._peek(0) == "_"):
             self._consume()
         token.set_length(self.cursor - token.start)
+
+        # Check to see if the identifier is a reserved keyword
+        types = ["void", "char", "short", "int", "long", "float", "double"]
+        if token.contents in types:
+            token.type = TokenType.TYPE
+
         return token
 
     def _num(self):
@@ -88,7 +115,7 @@ class Lexer:
         # TODO: spec compliance
         # Find the first non-numeric character
         token = Token(TokenType.NUM, 0, self)
-        while self._peek(0).isdigit():
+        while not self._is_eof() and self._peek(0).isdigit():
             self._consume()
         token.set_length(self.cursor - token.start)
         return token
@@ -97,7 +124,7 @@ class Lexer:
         """
         Moves the cursor past any whitespace.
         """
-        while self._peek(0).isspace():
+        while not self._is_eof() and self._peek(0).isspace():
             self._consume()
 
     def _consume(self):
@@ -127,8 +154,8 @@ class Lexer:
         self.column_num = 1
 
         # Extract the contents of the line as a string
-        end = min(self.source_code.find("\n", beg=self.cursor),
-                  self.source_code.find("\r", beg=self.cursor))
+        end = min(self.source_code.find("\n", self.cursor),
+                  self.source_code.find("\r", self.cursor))
         if end == -1:
             end = len(self.source_code)
         self.line = self.source_code[self.cursor:end]
@@ -194,11 +221,14 @@ class TokenType:
     A list of all possible token types.
     """
     # Arithmetic
-    PLUS = 0     # Addition
-    MINUS = 1    # Subtraction
-    ASTERISK = 2 # Multiplication
-    FSLASH = 3   # Division (forward slash)
+    PLUS = 0      # Addition
+    MINUS = 1     # Subtraction
+    ASTERISK = 2  # Multiplication
+    FSLASH = 3    # Division (forward slash)
+
+    # Keywords
+    TYPE = 4  # Built-in types (void, char, short, int, long, float, double)
 
     # Values
-    IDENT = 4 # Identifiers
-    NUM = 5   # Numbers
+    IDENT = 5  # Identifiers
+    NUM = 6    # Numbers

@@ -8,6 +8,7 @@ import os.path
 import platform
 import subprocess
 import argparse
+import colorama
 
 from lexer import Lexer
 from ast import AstGenerator
@@ -24,6 +25,9 @@ def main():
     :return: The compiler's exit status as an integer; 0 for success and
     non-zero for error.
     """
+    # Initialise colorama for cross platform terminal color support
+    colorama.init()
+
     # Wrap the entire compiler in a try-except for compiler errors. Any other
     # errors indicate an internal bug in the compiler
     try:
@@ -43,11 +47,11 @@ def assert_platform():
     """
     # Check operating system
     if sys.platform != "darwin":
-        raise CompilerError("Only macOS is supported (for now)")
+        raise CompilerError("Only macOS is supported")
 
     # Check processor architecture
     if platform.machine() != "x86_64":
-        raise CompilerError("Only x86-64 platforms are supported (for now)")
+        raise CompilerError("Only x86-64 platforms are supported")
 
 
 def parse_args():
@@ -57,11 +61,11 @@ def parse_args():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("files", nargs="+",
-                        help="compile and link the source or object file")
+                        help="compile and link source and object files")
     parser.add_argument("-v", "--version", action="version",
-                        version="Cosec 0.0.1")
+                        version="The Cosec C Compiler (version 0.1)")
     parser.add_argument("-o", "--output", default="a.out",
-                        help="write output executable to OUTPUT")
+                        help="write output to <file>")
     return parser.parse_args()
 
 

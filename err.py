@@ -3,6 +3,8 @@
 # By Ben Anderson
 # December 2018
 
+from colorama import Fore, Style
+
 
 class CompilerErrorBuilder:
     """
@@ -98,4 +100,4 @@ class CompilerError(Exception):
         arrow is drawn is updated.
         """
         # TODO
-        print("error: " + self.message)
+        print(Fore.RED + Style.BRIGHT + "error: " + Style.RESET_ALL + self.message)

@@ -9,7 +9,6 @@ import platform
 import subprocess
 import argparse
 import colorama
-
 from lexer import Lexer
 from ast import AstGenerator
 from ir import IrGenerator
@@ -22,19 +21,19 @@ def main():
     The main entry point for the compiler's command line utility, which
     compiles, assembles, and links all provided files together to produce an
     executable.
-    :return: The compiler's exit status as an integer; 0 for success and
-    non-zero for error.
+    :return: The program's exit status. 0 for success and non-zero for error.
     """
     # Initialise colorama for cross platform terminal color support
     colorama.init()
 
-    # Wrap the entire compiler in a try-except for compiler errors. Any other
-    # errors indicate an internal bug in the compiler
+    # Catch all compiler errors (any other exception represents an internal
+    # compiler error)
     try:
         assert_platform()
         args = parse_args()
         process_files(args.files, args.output)
     except CompilerError as err:
+        # Pretty print all compiler errors to the standard output
         err.pretty_print()
         return 1
     return 0
@@ -43,7 +42,9 @@ def main():
 def assert_platform():
     """
     The compiler only works on Intel x86_64 systems with the GCC assembler and
-    linker installed. Such systems only include macOS and Linux.
+    linker installed. Such systems only include macOS and Linux. We only support
+    macOS for now, since I haven't worked out the linker arguments to use for
+    Linux yet.
     """
     # Check operating system
     if sys.platform != "darwin":
@@ -63,7 +64,7 @@ def parse_args():
     parser.add_argument("files", nargs="+",
                         help="compile and link source and object files")
     parser.add_argument("-v", "--version", action="version",
-                        version="The Cosec C Compiler (version 0.1)")
+                        version="The Cosec C Compiler (version 0.1.0)")
     parser.add_argument("-o", "--output", default="a.out",
                         help="write output to <file>")
     return parser.parse_args()

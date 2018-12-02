@@ -3,7 +3,7 @@
 # By Ben Anderson
 # December 2018
 
-from err import CompilerErrorBuilder
+from err import CompilerError, CompilerErrorBuilder
 
 
 class Lexer:
@@ -49,42 +49,51 @@ class Lexer:
         if self._is_eof():
             return None
 
-        ch = self._peek(0)
-
         # Whitespace
-        if ch.isspace():
+        if self._peek(0).isspace():
             self._consume_whitespace()
-            token = self._next_token()
+            return self._next_token()
 
-        # Arithmetic
-        elif ch == "+":
-            token = Token(TokenType.PLUS, 1, self)
+        # All language tokens, in order of length
+        triple_tokens = [">>=", "<<=", "..."]
+        double_tokens = ["++", "--", "+=", "-=", "*=", "/=", "%=", "&=",
+                         "|=", "^=", ">>", "<<", "->", "&&", "||", ">=",
+                         "<=", "==", "!=", "<%", "%>", "<:", ":>"]
+        single_tokens = ["+", "-", "*", "/", "%", ">", "<", "=", ";", ",", "(",
+                         ")", "[", "]", "{", "}", ":", ".", "&", "|", "^", "~",
+                         "!", "?"]
+
+        # Parse tokens first, in decreasing order of length
+        if self._slice(3) in triple_tokens:
+            token = Token.from_lexer(self._slice(3), 3, self)
+            self._consume()  # Consume 3 characters
             self._consume()
-        elif ch == "-":
-            token = Token(TokenType.MINUS, 1, self)
             self._consume()
-        elif ch == "*":
-            token = Token(TokenType.ASTERISK, 1, self)
+            return token
+        elif self._slice(2) in double_tokens:
+            token = Token.from_lexer(self._slice(2), 2, self)
+            self._consume()  # Consume 2 characters
             self._consume()
-        elif ch == "/":
-            token = Token(TokenType.FSLASH, 1, self)
-            self._consume()
+            return token
+        elif self._peek(0) in single_tokens:
+            token = Token.from_lexer(self._peek(0), 1, self)
+            self._consume()  # Consume 1 character
+            return token
 
         # Values
-        elif ch.isalpha() or ch == "_":
-            token = self._ident()
-        elif ch.isdigit():
-            token = self._num()
+        elif self._peek(0).isalpha() or self._peek(0) == "_":
+            return self._ident()
+        elif self._peek(0).isdigit():
+            return self._num()
 
         # Unrecognised character error
         else:
-            raise CompilerErrorBuilder(f"unrecognised character '{ch}'") \
-                .file(self.file)                                         \
-                .location(self.line_num, self.column_num, self.line)     \
-                .arrow(1)                                                \
+            msg = f"unrecognised token '{self._peek(0)}'"
+            raise CompilerErrorBuilder(msg)                           \
+                .file(self.file)                                      \
+                .location(self.line_num, self.column_num, self.line)  \
+                .arrow(1)                                             \
                 .build()
-
-        return token
 
     def _ident(self):
         """
@@ -93,7 +102,7 @@ class Lexer:
         :return: An identifier token.
         """
         # Find the first non-alphabetic, non-numeric character
-        token = Token(TokenType.IDENT, 0, self)
+        token = Token.from_lexer("identifier", 0, self)
         while not self._is_eof() and (self._peek(0).isalpha() or
                                       self._peek(0).isdigit() or
                                       self._peek(0) == "_"):
@@ -101,10 +110,14 @@ class Lexer:
         token.set_length(self.cursor - token.start)
 
         # Check to see if the identifier is a reserved keyword
-        types = ["void", "char", "short", "int", "long", "float", "double"]
-        if token.contents in types:
-            token.type = TokenType.TYPE
-
+        keywords = ["auto", "break", "case", "char", "const", "continue",
+                    "default", "do", "double", "else", "enum", "extern",
+                    "float", "for", "goto", "if", "inline", "int", "long",
+                    "register", "restrict", "return", "short", "signed",
+                    "sizeof", "static", "struct", "switch", "typedef", "union",
+                    "unsigned", "void", "volatile", "while"]
+        if token.contents in keywords:
+            token.type = token.contents
         return token
 
     def _num(self):
@@ -115,7 +128,7 @@ class Lexer:
         """
         # TODO: spec compliance
         # Find the first non-numeric character
-        token = Token(TokenType.NUM, 0, self)
+        token = Token.from_lexer("number", 0, self)
         while not self._is_eof() and self._peek(0).isdigit():
             self._consume()
         token.set_length(self.cursor - token.start)
@@ -159,6 +172,8 @@ class Lexer:
                   self.source_code.find("\r", self.cursor))
         if end == -1:
             end = len(self.source_code)
+
+        # Subtract 1 to exclude the final newline character '\n' or '\r'
         self.line = self.source_code[self.cursor:end - 1]
 
     def _peek(self, amount):
@@ -173,6 +188,15 @@ class Lexer:
             return self.source_code[self.cursor + amount]
         else:
             return None
+
+    def _slice(self, length):
+        """
+        Returns a slice of the source code starting at the current cursor
+        position and extending for 'length' characters.
+        :param length: The length of the slice.
+        :return: The source code slice.
+        """
+        return self.source_code[self.cursor:self.cursor + length]
 
     def _is_eof(self):
         """
@@ -190,22 +214,39 @@ class Token:
     comma, number, or identifier.
     """
 
-    def __init__(self, type, length, lexer):
+    def __init__(self, type, file=None, start=0, line_num=None, column_num=None,
+                 line=None, length=0, source_code=None, contents=None):
+        self.type = type
+        self.file = file
+        self.start = start
+        self.line_num = line_num
+        self.column_num = column_num
+        self.line = line
+        self.length = length
+        self.source_code = source_code
+        self.contents = contents
+
+    @staticmethod
+    def from_lexer(type, length, lexer):
         """
         Creates a new token with the given length, copying across information
         from the lexer.
         :param type: The type of token to create.
         :param length: The length of the token, in bytes.
         :param lexer: The lexer to copy information from.
+        :return: The new token.
         """
-        self.type = type
-        self.start = lexer.cursor
-        self.line_num = lexer.line_num
-        self.column_num = lexer.column_num
-        self.line = lexer.line
-        self.length = length
-        self.source_code = lexer.source_code
-        self.contents = lexer.source_code[lexer.cursor:lexer.cursor + length]
+        token = Token(type)
+        token.type = type
+        token.file = lexer.file
+        token.start = lexer.cursor
+        token.line_num = lexer.line_num
+        token.column_num = lexer.column_num
+        token.line = lexer.line
+        token.length = length
+        token.source_code = lexer.source_code
+        token.contents = lexer.source_code[lexer.cursor:lexer.cursor + length]
+        return token
 
     def set_length(self, length):
         """
@@ -217,19 +258,86 @@ class Token:
         self.contents = self.source_code[self.start:self.start + length]
 
 
-class TokenType:
+class TokenSequence:
     """
-    A list of all possible token types.
+    Stores a list of tokens and keeps track of the "current" token, allowing us
+    to progressively advance through the token list.
     """
-    # Arithmetic
-    PLUS = 0      # Addition
-    MINUS = 1     # Subtraction
-    ASTERISK = 2  # Multiplication
-    FSLASH = 3    # Division (forward slash)
 
-    # Keywords
-    TYPE = 4  # Built-in types (void, char, short, int, long, float, double)
+    def __init__(self, tokens):
+        self._tokens = tokens
+        self._current = 0
 
-    # Values
-    IDENT = 5  # Identifiers
-    NUM = 6    # Numbers
+    def cur(self):
+        """
+        Returns the current token, or None if we've reached the end of the
+        tokens list.
+        """
+        return self.peek(0)
+
+    def prev(self):
+        """
+        Returns the previous token, or None if there was no previous token.
+        """
+        return self.peek(-1)
+
+    def next(self):
+        """
+        Advances to the next token.
+        """
+        if self._current < len(self._tokens):
+            self._current += 1
+
+    def peek(self, amount):
+        """
+        Returns the token 'amount' tokens in front of (or behind) the current
+        token, or None if the requested token is out of bounds.
+        """
+        if self._current + amount < 0 or \
+                self._current + amount >= len(self._tokens):
+            return None
+        else:
+            return self._tokens[self._current + amount]
+
+    def expect(self, expected):
+        """
+        Triggers an exception if the current token is not of the expected type.
+        :param expected: The expected token type.
+        """
+        if self.cur().type != expected:
+            msg = f"expected '{expected}', got '{self.cur().contents}'"
+            raise CompilerError.from_tk(msg, self.cur())
+        else:
+            return self.cur()
+
+    def combine(self, start_tk, end_tk):
+        """
+        Combine all tokens between the given starting and ending tokens into one
+        large token, for use with errors.
+        :param start_tk: The starting token.
+        :param end_tk: The ending token.
+        :return: A token formed by combining the tokens between the start and
+        end tokens.
+        """
+        # Ensure the starting and ending tokens are from the same file
+        assert(start_tk.file == end_tk.file)
+        assert(start_tk.source_code == end_tk.source_code)
+
+        # Ensure the start token is before the end token
+        if start_tk.start > end_tk.start:
+            return self.combine(end_tk, start_tk)  # Swap the order
+
+        # Check to see if the two tokens are equal
+        if start_tk.start == end_tk.start and start_tk.length == end_tk.length:
+            return start_tk
+
+        # Create the combined token
+        token = Token("combined")
+        token.file = start_tk.file
+        token.start = start_tk.start
+        token.line_num = start_tk.line_num
+        token.column_num = start_tk.column_num
+        token.line = start_tk.line
+        token.source_code = start_tk.source_code
+        token.set_length(end_tk.start + end_tk.length - start_tk.start)
+        return token

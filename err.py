@@ -89,6 +89,20 @@ class CompilerError(Exception):
         self.column_num = column_num
         self.length = length
 
+    @staticmethod
+    def from_tk(msg, token):
+        """
+        Create a compiler error from a message and lexer token.
+        :param msg: The error message.
+        :param token: The token to center the error on.
+        :return: The compiler error.
+        """
+        return CompilerErrorBuilder(msg) \
+            .file(token.file) \
+            .location(token.line_num, token.column_num, token.line) \
+            .arrow(token.length) \
+            .build()
+
     def pretty_print(self):
         """
         Pretty prints the compiler error to the standard output, using colors

@@ -97,10 +97,10 @@ class CompilerError(Exception):
         :param token: The token to center the error on.
         :return: The compiler error.
         """
-        return CompilerErrorBuilder(msg) \
-            .file(token.file) \
+        return CompilerErrorBuilder(msg)                            \
+            .file(token.file)                                       \
             .location(token.line_num, token.column_num, token.line) \
-            .arrow(token.length) \
+            .arrow(token.length)                                    \
             .build()
 
     def pretty_print(self):

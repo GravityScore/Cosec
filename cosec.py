@@ -9,7 +9,7 @@ import platform
 import subprocess
 import argparse
 import colorama
-from lexer import Lexer
+from lexer import TokenSequence
 from ast import AstGenerator
 from ir import IrGenerator
 from asm import AsmGenerator
@@ -117,14 +117,13 @@ def compile(src_file, asm_file):
     :param src_file: The .c file to compile.
     :param asm_file: The path to write the .s output file to.
     """
-    source_code = read_file(src_file)
+    source = read_file(src_file)
 
     # Source code -> tokens
-    lexer = Lexer(src_file, source_code)
-    tokens = lexer.tokenize()
+    seq = TokenSequence(src_file, source)
 
     # Tokens -> AST
-    ast = AstGenerator(tokens)
+    ast = AstGenerator(seq)
     ast_root = ast.gen()
 
     # AST -> IR

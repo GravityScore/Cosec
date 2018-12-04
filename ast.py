@@ -4,146 +4,478 @@
 # December 2018
 
 from err import CompilerError
-from lexer import TokenSequence
 
 
 class AstGenerator:
     """
-    The abstract syntax tree (AST) is a high level representation of C source
-    code as a graph.
+    The AST generator builds an abstract syntax tree (AST) from a token
+    sequence. An AST is a high-level representation of a C program, structured
+    as a tree.
     """
 
-    def __init__(self, tokens):
+    def __init__(self, seq):
         """
-        Create an AST generator that can build an AST from a list of tokens.
-        :param tokens: The tokens to build the AST from.
+        Create an AST generator.
+        :param seq: The token sequence to build the AST from.
         """
-        self.tk = TokenSequence(tokens)
+        self.seq = seq
 
     def gen(self):
         """
-        Build an AST from the list of tokens.
-        :return: The root of the built AST.
-        """
-        return self.parse_top_level_nodes()
-
-    def parse_top_level_nodes(self):
-        """
-        Parse a sequence of declarations or function definitions at the top
-        level of a source code file.
-        :return: An array of top level nodes.
-        """
-        top_levels = []
-        while self.tk.cur() is not None:
-            top_levels.append(self.parse_top_level_node())
-        return top_levels
-
-    def parse_top_level_node(self):
-        """
-        Parse a single top level node (a function definition or a declaration),
-        at the top level of a source code file.
-        :return: A top level node.
-        """
-        # Only function definitions are allowed for now
-        return FuncDef(self.tk)
-
-
-class FuncDef:
-    """
-    Information about a top level function definition.
-    """
-
-    def __init__(self, tk):
-        """
-        Parse a top level function definition from a token sequence.
-        :param tk: The token sequence.
-        :return: The top level function definition.
-        """
-        start = tk.cur()
-
-        # Return type and name
-        self.return_type = BuiltInType(tk)
-        self.name = tk.expect("identifier")
-        tk.next()
-
-        # Arguments list
-        self.args = []
-        self.parse_args(tk)
-
-        # Function body
-        self.body = []
-        self.parse_body(tk)
-
-        # The tokens that make up this function definition
-        self.range = tk.combine(start, tk.prev())
-
-    def parse_args(self, tk):
-        """
-        Parse an argument definition list.
-        :param tk: The token sequence.
-        """
-        tk.expect("(")
-        tk.next()
-        while tk.cur().type != ")":
-            self.args.append(FuncDefArg(tk))
-
-            # Expect a comma after the argument
-            if tk.cur().type == ",":
-                tk.next()
-            else:
-                break
-        tk.expect(")")
-        tk.next()
-
-    def parse_body(self, tk):
-        """
-        Parse the body of a function definition.
-        :param tk: The token sequence.
-        """
-        tk.expect("{")
-        tk.next()
-        while tk.cur().type != "}":
-            self.body.append(Statement(tk))
-        tk.expect("}")
-        tk.next()
-
-
-class FuncDefArg:
-    """
-    Information about an argument to a function definition.
-    """
-
-    def __init__(self, tk):
-        """
-        Parse an argument to a function definition.
-        :param tk: The token sequence.
-        """
-        self.type = BuiltInType(tk)
-        self.name = tk.expect("identifier")
-        tk.next()
-        self.range = tk.combine(self.type.range, self.name)
-
-
-class Statement:
-    """
-    A statement is something like an assignment, variable declaration, if
-    statement, etc.
-    """
-
-    def __init__(self, tk):
-        """
-        Parses a statement.
-        :param tk: The token sequence.
+        Build an AST from a token sequence.
+        :return: The AST root.
         """
         pass
 
+    def parse_declarator(self):
+        """
+        Parse a declarator. The relevant grammar is:
+            declarator: pointer direct_declarator | direct_declarator ;
+
+            direct_declarator
+                : IDENTIFIER
+                | '(' declarator ')'
+                | direct_declarator '[' ']'
+                | direct_declarator '[' type_qualifiers ']'
+                | direct_declarator '[' '*' ']'
+                | direct_declarator '[' type_qualifiers '*' ']'
+                | direct_declarator '[' expression ']'
+                | direct_declarator '[' type_qualifiers expression ']'
+                | direct_declarator '[' STATIC expression ']'
+                | direct_declarator '[' STATIC type_qualifiers expression ']'
+                | direct_declarator '[' type_qualifiers STATIC expression ']'
+                | direct_declarator '(' parameter_types ')'
+                | direct_declarator '(' identifiers ')'      NOT SUPPORTED
+                | direct_declarator '(' ')'
+
+        Constraints:
+        * Every declarator defines an identifier
+        * The identifier is unique within its scope
+
+        This function also parses abstract declarators. The 'name' field on the
+        returned declarator is None when we've parsed an abstract declarator.
+
+        See https://stackoverflow.com/questions/17559631/what-are-those-strange-
+        array-sizes-and-static-in-c99 for an explanation about static and type
+        qualifiers within arrays (it's for function parameters with automatic
+        conversion of arrays to pointers).
+
+        :return: A declarator.
+        """
+        declarator = Declarator()
+        self.parse_declarator_recursive(declarator)
+
+        # Ensure we actually have a declarator
+        if len(declarator.stack) == 0:
+            raise CompilerError.from_tk("expected declarator", self.seq.cur())
+
+        # Ensure the declarator satisfies the above constraints
+        # TODO: e.g. static and cvr can only occur on outermost arrays in
+        # function parameters (read the standard)
+        return declarator
+
+    def parse_declarator_recursive(self, declarator):
+        """
+        A great article on declarator parsing describing my approach:
+        http://blog.robertelder.org/building-a-c-compiler-type-system-the-
+        formidable-declarator/
+        """
+        # Check for a pointer
+        pointers = []
+        while self.seq.cur().type == "*":
+            pointers.append(self.parse_pointer())
+
+        # Either we have an identifier or an open parenthesis
+        if self.seq.cur().type == "(":
+            self.seq.next()
+
+            # Parse another declarator recursively
+            self.parse_declarator_recursive(declarator)
+
+            # Expect a closing parenthesis
+            self.seq.expect(")")
+            self.seq.next()
+        elif self.seq.cur().type == "identifier":
+            declarator.name = self.seq.cur()
+            self.seq.next()
+
+        # Check for any number of postfix array or function parts
+        while self.seq.cur().type == "(" or self.seq.cur().type == "[":
+            if self.seq.cur().type == "(":
+                declarator.stack.append(self.parse_declarator_function_part())
+            elif self.seq.cur().type == "[":
+                declarator.stack.append(self.parse_declarator_array_part())
+
+        # The pointer part comes after arrays or functions, so that 'int *foo()'
+        # becomes a function that returns a pointer to an int, and not a pointer
+        # to a function that returns an int (which would be 'int (*foo)()').
+        # We need to append the pointers in the reverse order that they were
+        # parsed
+        declarator.stack += pointers.reverse()
+
+    def parse_pointer(self):
+        """
+        Parses a pointer and any subsequent type qualifiers, returning the set
+        of type qualifiers. Relevant grammar:
+
+            pointer
+                : '*' type_qualifiers pointer
+                | '*' type_qualifiers
+                | '*' pointer
+                | '*'
+
+        :return: A set of type qualifiers following a pointer
+        """
+        # Check if we've actually got a pointer
+        if self.seq.cur().type != "*":
+            return None
+        self.seq.next()
+
+        # Check for type qualifiers after the asterisk
+        pointer = DeclaratorPointerPart()
+        pointer.type_qualifiers = self.parse_type_qualifiers()
+        return pointer
+
+    def parse_type_qualifiers(self):
+        """
+        Parses a set of type qualifiers.
+        :return: A set of type qualifiers (no duplicates, meaningless order)
+        """
+        type_qualifiers = set()
+        while self.seq.cur() is not None:
+            qualifier = self.seq.cur().type
+            if qualifier in ["const", "restrict", "volatile"]:
+                type_qualifiers.add(qualifier)
+                self.seq.next()
+            else:
+                break
+        return type_qualifiers
+
+    def parse_declarator_function_part(self):
+        """
+        Parses a function part of a declarator. Relevant grammar:
+
+            direct_declarator
+                : ...
+                | direct_declarator '(' parameter_types ')'
+                | direct_declarator '(' identifiers ')'      NOT SUPPORTED
+                | direct_declarator '(' ')'
+
+            parameter_types
+                : parameter_list ',' '...'
+                | parameter_list
+
+            parameter_list
+                : parameter_declaration
+                | parameter_list ',' parameter_declaration
+
+            parameter_declaration
+                : declaration_specifiers declarator
+                | declaration_specifiers abstract_declarator
+                | declaration_specifiers
+
+        The identifier list (the old K&R style method of a function definition)
+        is not supported.
+
+        :return: A function part of a declarator.
+        """
+        # Expect the terminating parenthesis
+        self.seq.expect("(")
+        self.seq.next()
+
+        # Keep parsing arguments
+        fn_part = DeclaratorFunctionPart()
+        while self.seq.cur().type != ")":
+            # Parse the declaration specifiers
+            specifiers = self.parse_declaration_specifiers()
+
+            # The declarator is optional
+            declarator = None
+            if self.seq.cur().type != ")" and self.seq.cur().type != ",":
+                declarator = self.parse_declarator()
+
+            # Add the argument
+            arg = Declaration()
+            arg.specifiers = specifiers
+            arg.declarator = declarator
+            fn_part.args.append(arg)
+
+            # Check for a continuing comma
+            if self.seq.cur().type == ",":
+                self.seq.next()
+
+        # Expect the terminating parenthesis
+        self.seq.expect(")")
+        self.seq.next()
+        return fn_part
+
+    def parse_declarator_array_part(self):
+        """
+        Parses an array part of a declarator. Relevant grammar:
+
+            direct_declarator
+                : ...
+                | direct_declarator '[' ']'
+                | direct_declarator '[' type_qualifiers ']'
+                | direct_declarator '[' '*' ']'
+                | direct_declarator '[' type_qualifiers '*' ']'
+                | direct_declarator '[' expression ']'
+                | direct_declarator '[' type_qualifiers expression ']'
+                | direct_declarator '[' STATIC expression ']'
+                | direct_declarator '[' STATIC type_qualifiers expression ']'
+                | direct_declarator '[' type_qualifiers STATIC expression ']'
+                | ...
+
+            type_qualifiers
+                : type_qualifier
+                | type_qualifiers type_qualifier
+
+        :return: An array part of a declarator.
+        """
+        # Expect an opening brace
+        self.seq.expect("[")
+        self.seq.next()
+
+        # Check for static
+        array_part = DeclaratorArrayPart()
+        if self.seq.cur().type == "static":
+            array_part.static = True
+            self.seq.next()
+
+        # Check for type qualifiers
+        array_part.type_qualifiers = self.parse_type_qualifiers()
+
+        # Check for static again (it can be either before or after the type
+        # qualifiers, according to the standard)
+        if self.seq.cur().type == "static":
+            array_part.static = True
+            self.seq.next()
+
+        # The expression might consist of a single asterisk and a closing brace
+        # to indicate a variable length array
+        if self.seq.cur().type == "*" and self.seq.peek(1) is not None \
+                and self.seq.peek(1).type == "]":
+            array_part.vla = True
+            self.seq.next()
+        else:
+            # Parse a size expression (just a single number for now)
+            # TODO: fix when we've got expression parsing
+            self.seq.expect("number")
+            array_part.size_expr = self.seq.cur()
+            self.seq.next()
+
+        # Expect the closing brace
+        self.seq.expect("]")
+        self.seq.next()
+        return array_part
+
+    def parse_declaration_specifiers(self):
+        """
+        Parse a series of declaration specifiers. The relevant grammar is:
+            declaration_specifiers
+                : storage_class_specifier declaration_specifiers
+                | storage_class_specifier
+                | type_specifier declaration_specifiers
+                | type_specifier
+                | type_qualifier declaration_specifiers
+                | type_qualifier
+                | function_specifier declaration_specifiers
+                | function_specifier
+
+            storage_class_specifier: TYPEDEF | EXTERN | STATIC | AUTO | REGISTER
+
+            type_specifier: VOID | CHAR | SHORT | INT | LONG | FLOAT | DOUBLE
+                | SIGNED | UNSIGNED | BOOL | COMPLEX | IMAGINARY
+                | struct_or_union_specifier | enum_specifier | TYPEDEF_NAME
+
+            type_qualifier: CONST | RESTRICT | VOLATILE
+
+            function_specifier: INLINE
+
+        Note THREAD_LOCAL, AUTO, REGISTER, BOOL, COMPLEX, IMAGINARY, RESTRICT,
+        and VOLATILE are unsupported. AUTO, REGISTER, RESTRICT, and VOLATILE are
+        all no-ops, the remaining trigger compiler errors.
+
+        Constraints:
+        * Maximum 1 storage class specifier
+        * At least one type specifier
+        * Signed/unsigned comes first in the type specifier
+        * Function specifiers only used in the declaration of a function
+
+        :return: The declaration specifiers.
+        """
+        # All possible ways of specifying a particular built-in type
+        # These must be in ALPHABETICAL ORDER (sorted)
+        possible_types = {
+            "void": [["void"]],
+            "char": [["char"], ["char", "signed"]],
+            "uchar": [["char", "unsigned"]],
+            "short": [["short"], ["short", "signed"],
+                      ["int", "short", "signed"]],
+            "ushort": [["short", "unsigned"], ["int", "short", "unsigned"]],
+            "int": [["int"], ["signed"], ["int", "signed"], ["long"],
+                    ["long", "signed"], ["int", "long"],
+                    ["int", "long", "signed"]],
+            "uint": [["unsigned"], ["int", "unsigned"], ["long", "unsigned"],
+                     ["int", "long", "unsigned"]],
+            "llong": [["long", "long"], ["long", "long", "signed"],
+                      ["int", "long", "long"],
+                      ["int", "long", "long", "signed"]],
+            "ullong": [["long", "long", "unsigned"],
+                       ["int", "long", "long", "unsigned"]],
+            "float": [["float"]],
+            "double": [["double"], ["double", "long"]],
+        }
+
+        specifiers = DeclarationSpecifiers()
+        type_specifiers = []
+        while self.seq.cur() is not None:
+            specifier = self.seq.cur()
+            self.seq.next()
+
+            # ---- Storage class (typedef, extern, static, auto, register)
+            if specifier.type in ["typedef", "extern", "static", "auto",
+                                  "register"]:
+                # Check we haven't already got a storage class
+                if specifiers.storage_class is not None:
+                    raise CompilerError.from_tk("cannot specify more than one "
+                                                "storage class", specifier)
+                specifiers.storage_class = specifier.type
+
+            # ---- Type specifier (built in, struct, enum, typedef)
+            elif specifier.type in ["void", "char", "short", "int", "long",
+                                    "float", "double", "signed", "unsigned"]:
+                # Add the type specifier
+                type_specifiers.append(specifier.type)
+
+                # Check that the type specifier list is equal to one of the
+                # lists in the dictionary above, ignoring order
+                type = None
+                for (candidate_type, specifications) in possible_types.items():
+                    if sorted(type_specifiers) in specifications:
+                        type = candidate_type
+                        break
+
+                # Check the type specifier list actually matched one of the
+                # above lists
+                if type is None:
+                    raise CompilerError.from_tk("cannot combine type specifier",
+                                                specifier)
+                specifiers.type_specifier = type
+
+            # ---- Type qualifier (const, restrict, volatile)
+            elif specifier.type in ["const", "restrict", "volatile"]:
+                specifiers.type_qualifiers.add(specifier.type)
+
+            # ---- Function specifier
+            elif specifier.type in ["inline"]:
+                specifiers.function_specifiers.add(specifier.type)
+            else:
+                break
+
+        # We require at least one type specifier
+        if len(type_specifiers) == 0:
+            raise CompilerError.from_tk("expected declaration specifier",
+                                        self.seq.cur())
+        return specifiers
+
+
+class Declaration:
+    """
+    A declaration is a set of declaration specifiers and a declarator. Note that
+    this class allows the declarator to be abstract (i.e. not have an associated
+    name/identifier). This should be guarded against when defining variables.
+    """
+
+    def __init__(self):
+        self.specifiers = None
+        self.declarator = None
+
+
+class Declarator:
+    """
+    A declarator can be stored as a "stack" of parts. There are array parts,
+    pointer parts, and function parts. For example,
+        int * (*(*(*foo)(char))(int))[3]
+    The declaration specifiers consists of just "int". The remaining is the
+    declarator. We have a pointer to a function "foo" (taking a char) that
+    returns a pointer to a function (taking an int) that returns a pointer to
+    an array of 3 pointers to ints. Read as a stack from the inside out:
+        1) pointer  2) function (char)  3) pointer  4) function (int)
+        5) pointer  6) array [3]  7) pointer
+    You can find more details on the implementation in the article:
+        http://blog.robertelder.org/building-a-c-compiler-type-system-the-
+        formidable-declarator/
+    """
+
+    def __init__(self):
+        # The FIRST element in the stack is the inner-most type adjacent to the
+        # identifier
+        self.stack = []
+
+        # 'name' is None for an abstract declarator
+        self.name = None
+
+
+class DeclaratorPointerPart:
+    """
+    A pointer part in a declarator's stack. Only has to keep track of the type
+    qualifiers that describe the pointer.
+    """
+
+    def __init__(self):
+        self.type_qualifiers = set()
+
+
+class DeclaratorFunctionPart:
+    """
+    A function part in a declarator's stack. Has to keep track of the function's
+    arguments (which are themselves declarations with declaration specifiers and
+    other declarators).
+    """
+
+    def __init__(self):
+        self.args = []
+
+
+class DeclaratorArrayPart:
+    """
+    An array part in a declarator's stack. Has to keep track of the array size.
+    If the array size depends on other local variables (and is not a constant
+    expression), then the array is a variable length array.
+    """
+
+    def __init__(self):
+        self.static = False
+        self.type_qualifiers = set()
+        self.vla = False  # Variable length array, indicated explicitly by '*'
+        self.size_expr = None
+
+
+class DeclarationSpecifiers:
+    """
+    There are 4 parts to a declaration specifier: the storage class (a typedef,
+    extern, static, auto, or register), the type specifiers (a built in type,
+    struct, union, enum, or typdef), any type qualifiers (const, restrict,
+    volatile, atomic), and any function specifiers (inline).
+    """
+
+    def __init__(self):
+        self.storage_class = None
+        self.type_specifier = None
+        self.type_qualifiers = set()
+        self.function_specifiers = set()
+
+
+class StorageClass:
+    TYPEDEF = "typedef"    # Specifies a typedef'd type
+    EXTERN = "extern"      # Specifies external linkage
+    STATIC = "static"      # Specifies internal linkage
+    AUTO = "auto"          # Does nothing (for now)
+    REGISTER = "register"  # Does nothing (for now)
+
 
 class BuiltInType:
-    """
-    A list of all built in types. Throughout the compiler code, we make the
-    assumption that a char is 8 bits, short is 16, int is 32, long is 32, long
-    long is 64, float is 32, and double is 64.
-    """
     # Base types
     VOID = "void"
     CHAR = "char"      # Signed 8 bit integer
@@ -159,61 +491,12 @@ class BuiltInType:
     UINT = "uint"      # Unsigned 32 bit integer
     ULLONG = "ullong"  # Unsigned 64 bit integer
 
-    def __init__(self, tk):
-        """
-        Parse a built-in type specifier from a token sequence.
-        :param tk: The token sequence.
-        """
-        # Keep track of the first token that makes up this type identifier
-        start = tk.cur()
 
-        # Check if we've got a sign qualifier
-        ok = False
-        self.type = "int"  # Default to an int
-        signed = True      # Default to a signed int
-        if tk.cur().type in ["signed", "unsigned"]:
-            ok = True
-            if tk.cur().type == "unsigned":
-                signed = False
-            tk.next()
+class TypeQualifier:
+    CONST = "const"        # Specifies a value or pointer is constant
+    RESTRICT = "restrict"  # Does nothing (for now)
+    VOLATILE = "volatile"  # Does nothing (for now)
 
-        # Check if we've got a type specifier
-        if tk.cur().type in ["void", "char", "short", "int", "long", "float",
-                             "double"]:
-            ok = True
-            self.type = tk.cur().type
-            tk.next()
 
-        # Check we actually saw a type specifier
-        if not ok:
-            msg = f"expected type specifier, got '{tk.cur().contents}'"
-            raise CompilerError.from_tk(msg, tk.cur())
-
-        # Sometimes we can add more type specifiers. Specifically, "short int",
-        # "long int", "long long", "long long int", "long double"
-        if self.type == "short":
-            if tk.cur().type == "int":       # short int
-                tk.next()
-        elif self.type == "long":
-            if tk.cur().type == "long":      # long long
-                self.type = "llong"
-                tk.next()
-                if tk.cur().type == "int":   # long long int
-                    tk.next()
-            elif tk.cur().type == "int":     # long int
-                tk.next()
-            elif tk.cur().type == "double":  # long double
-                self.type = "double"  # long double is the same as double
-                tk.next()
-
-        # Longs are the same as ints (both are 32 bits)
-        if self.type == "long":
-            self.type = "int"
-
-        # Prepend 'u' if unsigned
-        if not signed:
-            self.type = "u" + self.type
-
-        # Store which tokens make up the type specifier, for error printing
-        # purposes
-        self.range = tk.combine(start, tk.prev())
+class FunctionSpecifier:
+    INLINE = "inline"  # Specifies an inline function

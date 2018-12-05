@@ -66,7 +66,7 @@ class AstGenerator:
         self.parse_declarator_recursive(declarator)
 
         # Ensure we actually have a declarator
-        if len(declarator.stack) == 0:
+        if declarator.name is None and len(declarator.stack) == 0:
             raise CompilerError.from_tk("expected declarator", self.seq.cur())
 
         # Ensure the declarator satisfies the above constraints
@@ -100,7 +100,8 @@ class AstGenerator:
             self.seq.next()
 
         # Check for any number of postfix array or function parts
-        while self.seq.cur().type == "(" or self.seq.cur().type == "[":
+        while self.seq.cur() is not None and (self.seq.cur().type == "(" or
+                                              self.seq.cur().type == "["):
             if self.seq.cur().type == "(":
                 declarator.stack.append(self.parse_declarator_function_part())
             elif self.seq.cur().type == "[":
@@ -111,7 +112,8 @@ class AstGenerator:
         # to a function that returns an int (which would be 'int (*foo)()').
         # We need to append the pointers in the reverse order that they were
         # parsed
-        declarator.stack += pointers.reverse()
+        pointers.reverse()
+        declarator.stack += pointers
 
     def parse_pointer(self):
         """

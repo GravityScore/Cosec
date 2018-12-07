@@ -99,3 +99,68 @@ class TestAstGenerator(TestCase):
         self.assertTrue(isinstance(decl.stack[1], DeclaratorPointerPart))
         self.assertEqual(decl.stack[0].type_qualifiers, {"volatile"})
         self.assertEqual(decl.stack[1].type_qualifiers, {"const"})
+
+    def test_array_declarators(self):
+        ast = AstGenerator(TokenSequence("", "a[], a[][], *a[], (*a)[], "
+                                             "*(a[][]), *(a[])[], *(a)[], "
+                                             "*((((a)))), ((((((*a))))))"))
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 1)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorArrayPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 2)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorArrayPart))
+        self.assertTrue(isinstance(decl.stack[1], DeclaratorArrayPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 2)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorArrayPart))
+        self.assertTrue(isinstance(decl.stack[1], DeclaratorPointerPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 2)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorPointerPart))
+        self.assertTrue(isinstance(decl.stack[1], DeclaratorArrayPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 3)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorArrayPart))
+        self.assertTrue(isinstance(decl.stack[1], DeclaratorArrayPart))
+        self.assertTrue(isinstance(decl.stack[2], DeclaratorPointerPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 3)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorArrayPart))
+        self.assertTrue(isinstance(decl.stack[1], DeclaratorArrayPart))
+        self.assertTrue(isinstance(decl.stack[2], DeclaratorPointerPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 2)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorArrayPart))
+        self.assertTrue(isinstance(decl.stack[1], DeclaratorPointerPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 1)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorPointerPart))
+        ast.seq.next()
+
+        decl = ast.parse_declarator()
+        self.assertEqual(decl.name.contents, "a")
+        self.assertEqual(len(decl.stack), 1)
+        self.assertTrue(isinstance(decl.stack[0], DeclaratorPointerPart))

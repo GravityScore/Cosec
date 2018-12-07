@@ -262,9 +262,7 @@ class AstGenerator:
         else:
             # Parse a size expression (just a single number for now)
             # TODO: fix when we've got expression parsing
-            self.seq.expect("number")
-            array_part.size_expr = self.seq.cur()
-            self.seq.next()
+            pass
 
         # Expect the closing brace
         self.seq.expect("]")

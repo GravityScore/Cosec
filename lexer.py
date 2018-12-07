@@ -300,7 +300,7 @@ class Lexer:
         end = min(self.source.find("\n", self.cursor),
                   self.source.find("\r", self.cursor))
         if end == -1:  # On the last line of the file
-            end = len(self.source)
+            end = len(self.source) + 1
 
         # Subtract 1 to exclude the newline character
         self.line = self.source[self.cursor:end - 1]

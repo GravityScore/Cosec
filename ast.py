@@ -203,7 +203,8 @@ class AstGenerator:
             fn_part.args.append(arg)
 
             # Check for a continuing comma
-            if self.seq.cur().type == ",":
+            if self.seq.cur().type != ")":
+                self.seq.expect(",")
                 self.seq.next()
 
         # Expect the terminating parenthesis
@@ -331,7 +332,6 @@ class AstGenerator:
         type_specifiers = []
         while self.seq.cur() is not None:
             specifier = self.seq.cur()
-            self.seq.next()
 
             # ---- Storage class (typedef, extern, static, auto, register)
             if specifier.type in ["typedef", "extern", "static", "auto",
@@ -341,6 +341,7 @@ class AstGenerator:
                     raise CompilerError.from_tk("cannot specify more than one "
                                                 "storage class", specifier)
                 specifiers.storage_class = specifier.type
+                self.seq.next()
 
             # ---- Type specifier (built in, struct, enum, typedef)
             elif specifier.type in ["void", "char", "short", "int", "long",
@@ -362,14 +363,17 @@ class AstGenerator:
                     raise CompilerError.from_tk("cannot combine type specifier",
                                                 specifier)
                 specifiers.type_specifier = type
+                self.seq.next()
 
             # ---- Type qualifier (const, restrict, volatile)
             elif specifier.type in ["const", "restrict", "volatile"]:
                 specifiers.type_qualifiers.add(specifier.type)
+                self.seq.next()
 
             # ---- Function specifier
             elif specifier.type in ["inline"]:
                 specifiers.function_specifiers.add(specifier.type)
+                self.seq.next()
             else:
                 break
 

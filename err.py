@@ -3,8 +3,10 @@
 # By Ben Anderson
 # December 2018
 
-from colorama import Fore, Style
 from lexer import Token
+
+import sys
+import os
 
 
 class CompilerError(Exception):
@@ -88,13 +90,21 @@ class CompilerError(Exception):
         and proper formatting.
         """
         # Error message
-        print(Fore.RED + Style.BRIGHT + "error: ", end="")
-        print(Fore.WHITE + Style.BRIGHT + self.description + Style.RESET_ALL)
+        print_color(Color.RED)
+        print_color(Color.BOLD)
+        print("error: ", end="")
+        print_color(Color.WHITE)
+        print(self.description, end="")
+        print_color(Color.RESET)
+        print("")  # End the line
 
         # File
         if self.file is None or len(self.file) == 0:
             return
-        print(Fore.BLUE + Style.BRIGHT + "  --> " + Style.RESET_ALL, end="")
+        print_color(Color.BLUE)
+        print_color(Color.BOLD)
+        print("  --> ", end="")
+        print_color(Color.RESET)
         print(self.file, end="")
 
         # Line number
@@ -115,7 +125,10 @@ class CompilerError(Exception):
             return
         spaces_per_tab = 4
         prefix = "  " + str(self.line_num) + " | "
-        print(Fore.BLUE + Style.BRIGHT + prefix + Style.RESET_ALL, end="")
+        print_color(Color.BLUE)
+        print_color(Color.BOLD)
+        print(prefix, end="")
+        print_color(Color.RESET)
         print(self.line.replace("\t", " " * spaces_per_tab))
 
         # Arrow. We need to account for the number of tabs we've replaced before
@@ -125,4 +138,44 @@ class CompilerError(Exception):
         num_tabs = self.line.count("\t", 0, self.column_num - 1)
         padding = self.column_num - 1 + num_tabs * (spaces_per_tab - 1)
         print(" " * (len(prefix) + padding), end="")
-        print(Fore.YELLOW + Style.BRIGHT + "^" + "~" * (self.length - 1))
+        print_color(Color.YELLOW)
+        print_color(Color.BOLD)
+        print("^" + "~" * (self.length - 1), end="")
+        print_color(Color.RESET)
+        print("")  # End the line
+
+
+class Color:
+    """
+    ASCII color codes that change the style of the text printed to the standard
+    output.
+    """
+    RESET = "\x1B[0m"
+    RED = "\x1B[31m"
+    GREEN = "\x1B[32m"
+    YELLOW = "\x1B[33m"
+    BLUE = "\x1B[34m"
+    WHITE = "\x1B[37m"
+    BOLD = "\x1B[1m"
+
+
+def print_color(color: str):
+    """
+    Prints a color code to the standard output if colors are supported.
+
+    :param color: The color code to print.
+    """
+    if supports_color():
+        print(color, end="")
+
+
+def supports_color():
+    """
+    Checks if the running terminal supports ASCII color codes. This method is
+    modified from the Django source code.
+
+    :return: True if the terminal supports colors, or False otherwise.
+    """
+    supported_platform = sys.platform != "win32" or "ANSICON" in os.environ
+    is_a_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    return supported_platform and is_a_tty

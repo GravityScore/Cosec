@@ -8,12 +8,10 @@ import sys
 import os.path
 import platform
 import subprocess
-import argparse
-import colorama
 
 from lexer import Tokens
 from parser import Parser
-from err import CompilerError
+from err import CompilerError, Color, print_color
 
 
 def main():
@@ -24,20 +22,86 @@ def main():
 
     :return: The program's exit status. 0 for success and non-zero for error.
     """
-    # Initialise colorama for cross platform terminal color support
-    colorama.init()
-
     # Catch all compiler errors (any other exception represents an internal
     # compiler error)
     try:
-        assert_platform()
+        # Parse command line arguments
         args = parse_args()
-        process_files(args.files, args.output)
+
+        # Check if we're to show help or version information
+        if args["help"]:
+            show_help()
+        elif args["version"]:
+            show_version()
+        else:
+            # Otherwise, proceed with compilation
+            assert_platform()
+            process_files(args["files"], args["output"])
     except CompilerError as err:
         # Pretty print all compiler errors to the standard output
         err.print()
         return 1
     return 0
+
+
+def parse_args():
+    """
+    Parses the command line arguments passed to the compiler.
+
+    :return: The set of command line arguments.
+    """
+    # Start with a reasonable set of default arguments
+    args = {"help": False, "version": False, "output": "a.out", "files": []}
+
+    # Iterate over all the arguments, starting at the 1st argument since the
+    # 0th is just the script name
+    idx = 1
+    while idx < len(sys.argv):
+        arg = sys.argv[idx]
+        if arg == "--help" or arg == "-h":
+            args["help"] = True
+        elif arg == "--version" or arg == "-v":
+            args["version"] = True
+        elif arg == "-o":
+            # Check there's another argument to follow
+            if idx >= len(sys.argv) - 1:
+                raise CompilerError("missing argument to '-o'")
+            idx += 1
+            args["output"] = sys.argv[idx]
+        elif arg[0] == "-":
+            # Unknown command line option (wasn't handled above)
+            raise CompilerError(f"unknown option '{arg}'")
+        else:
+            args["files"].append(arg)
+        idx += 1
+    return args
+
+
+def show_version():
+    """
+    Prints version text to the standard output.
+    """
+    print_color(Color.GREEN)
+    print_color(Color.BOLD)
+    print("Cosec C Compiler", end="")
+    print_color(Color.RESET)
+    print(" version 0.1.0")
+    print("By Ben Anderson")
+
+
+def show_help():
+    """
+    Prints help text to the standard output.
+    """
+    show_version()
+    print("")
+    print("Usage:")
+    print("  cosec [options] <files>")
+    print("")
+    print("Options:")
+    print("  --help, -h     Show this help text")
+    print("  --version, -v  Show the compiler version")
+    print("  -o <file>      Write output to <file>")
 
 
 def assert_platform():
@@ -49,27 +113,11 @@ def assert_platform():
     """
     # Check operating system
     if sys.platform != "darwin":
-        raise CompilerError("Only macOS is supported")
+        raise CompilerError("Only macOS is supported (for now)")
 
     # Check processor architecture
     if platform.machine() != "x86_64":
-        raise CompilerError("Only x86-64 platforms are supported")
-
-
-def parse_args():
-    """
-    Parses the command line arguments passed to the compiler.
-
-    :return: The set of command line arguments.
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument("files", nargs="+",
-                        help="compile and link source and object files")
-    parser.add_argument("-v", "--version", action="version",
-                        version="The Cosec C Compiler (version 0.1.0)")
-    parser.add_argument("-o", "--output", default="a.out",
-                        help="write output to <file>")
-    return parser.parse_args()
+        raise CompilerError("Only x86-64 platforms are supported (for now)")
 
 
 def process_files(files, exec_file):
@@ -82,6 +130,10 @@ def process_files(files, exec_file):
     :param files:     A set of C source code files or compiled object files.
     :param exec_file: The path to write the output executable to.
     """
+    # Check the user actually supplied at least one file to compile
+    if len(files) == 0:
+        raise CompilerError("no input files")
+
     # Compile each .c file into a .o file with the same base file name
     object_files = []
     for file in files:

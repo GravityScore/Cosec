@@ -222,7 +222,7 @@ class Lexer:
         # Check there's nothing after the suffix
         ch = self.scanner.cur()
         if is_ident_continue(ch):
-            desc = f"invalid character '{ch}' in float"
+            desc = f"invalid character '{ch}' in number"
             self.scanner.trigger_err(desc, 0, 1)
         return token
 
@@ -258,7 +258,7 @@ class Lexer:
         # Check there's nothing after the suffix
         ch = self.scanner.cur()
         if is_ident_continue(ch):
-            desc = f"invalid character '{ch}' in integer"
+            desc = f"invalid character '{ch}' in number"
             self.scanner.trigger_err(desc, 0, 1)
         return token
 
@@ -449,7 +449,7 @@ def is_decimal(character: str):
     :return:          True if the character is a decimal digit, or False
                       otherwise.
     """
-    if character is None or len(character) == 0:
+    if len(character) == 0:
         return False
     return character in string.digits
 
@@ -462,7 +462,7 @@ def is_hex(character: str):
     :return:          True if the character is a hexadecimal digit, or False
                       otherwise.
     """
-    if character is None or len(character) == 0:
+    if len(character) == 0:
         return False
     return character in string.hexdigits
 
@@ -475,7 +475,7 @@ def is_octal(character: str):
     :return:          True if the character is an octal digit, or False
                       otherwise.
     """
-    if character is None or len(character) == 0:
+    if len(character) == 0:
         return False
     return character in string.octdigits
 
@@ -488,7 +488,7 @@ def is_ident_start(character: str):
     :return:          True if the character can start an identifier, or False
                       otherwise.
     """
-    if character is None or len(character) == 0:
+    if len(character) == 0:
         return False
     return character in string.ascii_letters or character == "_"
 
@@ -501,7 +501,7 @@ def is_ident_continue(character: str):
     :return:          True if the character can be part of an identifier, or
                       False otherwise.
     """
-    if character is None or len(character) == 0:
+    if len(character) == 0:
         return False
     return is_ident_start(character) or is_decimal(character)
 

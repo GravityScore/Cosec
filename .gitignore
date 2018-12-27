@@ -1,5 +1,5 @@
 .DS_Store
-/misc
 /.idea
 /venv
 __pycache__
+/test.c

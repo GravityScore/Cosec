@@ -1,3 +1,4 @@
+#!/usr/bin/python
 
 # The Cosec C Compiler
 # By Ben Anderson
@@ -9,10 +10,9 @@ import platform
 import subprocess
 import argparse
 import colorama
-from lexer import TokenSequence
-from ast import AstGenerator
-from ir import IrGenerator
-from asm import AsmGenerator
+
+from lexer import Tokens
+from parser import Parser
 from err import CompilerError
 
 
@@ -21,6 +21,7 @@ def main():
     The main entry point for the compiler's command line utility, which
     compiles, assembles, and links all provided files together to produce an
     executable.
+
     :return: The program's exit status. 0 for success and non-zero for error.
     """
     # Initialise colorama for cross platform terminal color support
@@ -34,7 +35,7 @@ def main():
         process_files(args.files, args.output)
     except CompilerError as err:
         # Pretty print all compiler errors to the standard output
-        err.pretty_print()
+        err.print()
         return 1
     return 0
 
@@ -58,6 +59,7 @@ def assert_platform():
 def parse_args():
     """
     Parses the command line arguments passed to the compiler.
+
     :return: The set of command line arguments.
     """
     parser = argparse.ArgumentParser()
@@ -76,23 +78,10 @@ def process_files(files, exec_file):
     file. Compiles each source code file into an object file, and links these
     object files (plus any others included in the files list) into an
     executable.
-    :param files: A set of C source code files or compiled object files.
+
+    :param files:     A set of C source code files or compiled object files.
     :param exec_file: The path to write the output executable to.
     """
-    # Check that each file is either a .c or .o file. We perform this check on
-    # all files PRIOR to compiling any .c files because we don't want to
-    # generate unnecessary .o files before discovering an error with the input
-    # arguments
-    for file in files:
-        # Check the file's extension
-        extension = os.path.splitext(file)[1]
-        if extension != ".c" and extension != ".o":
-            raise CompilerError(f"'{file}' must be a '.c' or '.o' file")
-
-        # Check we can read the file
-        if not os.access(file, os.R_OK):
-            raise CompilerError(f"failed to read file '{file}'")
-
     # Compile each .c file into a .o file with the same base file name
     object_files = []
     for file in files:
@@ -102,44 +91,47 @@ def process_files(files, exec_file):
             asm_file = file_name + ".s"
             obj_file = file_name + ".o"
             compile(file, asm_file)
-            assemble(asm_file, obj_file)
+            # assemble(asm_file, obj_file)
             object_files.append(obj_file)
         elif extension == ".o":
             object_files.append(file)
+        else:
+            raise CompilerError(f"'{file}' must be a '.c' or '.o' file")
 
     # Link all the object files into an executable
-    link(object_files, exec_file)
+    # link(object_files, exec_file)
 
 
 def compile(src_file, asm_file):
     """
     Compiles a C source code file into an assembly file.
+
     :param src_file: The .c file to compile.
     :param asm_file: The path to write the .s output file to.
     """
     source = read_file(src_file)
 
     # Source code -> tokens
-    seq = TokenSequence(src_file, source)
+    tokens = Tokens(src_file, source)
 
     # Tokens -> AST
-    ast = AstGenerator(seq)
-    ast_root = ast.gen()
+    parser = Parser(tokens)
+    roots = parser.gen()
 
-    # AST -> IR
-    ir = IrGenerator(ast_root)
-    ir_graph = ir.gen()
-
-    # IR -> Assembly
-    asm = AsmGenerator(ir_graph)
-    asm_code = asm.gen()
-
-    # Write the assembly code to the output file
-    try:
-        with open(asm_file, "w") as file:
-            file.write(asm_code)
-    except IOError as io_err:
-        raise CompilerError(f"failed to write to '{asm_file}'") from io_err
+    # # AST -> IR
+    # ir = IrGenerator(ast_root)
+    # ir_graph = ir.gen()
+    #
+    # # IR -> Assembly
+    # asm = AsmGenerator(ir_graph)
+    # asm_code = asm.gen()
+    #
+    # # Write the assembly code to the output file
+    # try:
+    #     with open(asm_file, "w") as file:
+    #         file.write(asm_code)
+    # except IOError as io_err:
+    #     raise CompilerError(f"failed to write to '{asm_file}'") from io_err
 
 
 def assemble(asm_file, obj_file):

@@ -1,10 +1,10 @@
 
-# ir.py
+# compiler/__init__.py
 # By Ben Anderson
 # December 2018
 
 
-class IrGenerator:
+class Compiler:
     """
     The intermediate representation (IR) stores a list of IR instructions
     organised in basic blocks. It's a lower-level representation of the C
@@ -13,8 +13,8 @@ class IrGenerator:
 
     def __init__(self, ast_root):
         """
-        Create an IR generator that can build an IR graph from an AST.
-        :param ast_root: The root node of the AST to build the IR from.
+        Create a compiler that can build an IR graph from an AST.
+        :param ast_root: The root node of the AST to build the IR graph from.
         """
         self.ast = ast_root
 

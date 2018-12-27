@@ -1,10 +1,10 @@
 
-# test_lexer.py
+# tests/test_lexer.py
 # By Ben Anderson
 # December 2018
 
 from unittest import TestCase
-from lexer import TokenSequence
+from lexer import Tokens
 
 
 class TestLexer(TestCase):
@@ -19,7 +19,7 @@ class TestLexer(TestCase):
         self.assertEqual(token.contents, contents)
 
     def test_whitespace(self):
-        seq = TokenSequence("", "\n + \t\t   \n+\r\n  \t+\t+ +\n\n")
+        seq = Tokens("", "\n + \t\t   \n+\r\n  \t+\t+ +\n\n")
         self.assert_token(seq.cur(), "+", 2, 1, 2, 2, "+")
         seq.next()
         self.assert_token(seq.cur(), "+", 10, 1, 3, 1, "+")
@@ -33,7 +33,7 @@ class TestLexer(TestCase):
         self.assertTrue(seq.cur() is None)
 
     def test_syntax(self):
-        seq = TokenSequence("", "+ - > >> >>=")
+        seq = Tokens("", "+ - > >> >>=")
         self.assert_token(seq.cur(), "+", 0, 1, 1, 1, "+")
         seq.next()
         self.assert_token(seq.cur(), "-", 2, 1, 1, 3, "-")
@@ -47,7 +47,7 @@ class TestLexer(TestCase):
         self.assertTrue(seq.cur() is None)
 
     def test_ident(self):
-        seq = TokenSequence("", "hello _hello h3ll0 _123")
+        seq = Tokens("", "hello _hello h3ll0 _123")
         self.assert_token(seq.cur(), "identifier", 0, 5, 1, 1, "hello")
         seq.next()
         self.assert_token(seq.cur(), "identifier", 6, 6, 1, 7, "_hello")
@@ -59,7 +59,7 @@ class TestLexer(TestCase):
         self.assertTrue(seq.cur() is None)
 
     def test_keywords(self):
-        seq = TokenSequence("", "for if forextra extrafor _for for_")
+        seq = Tokens("", "for if forextra extrafor _for for_")
         self.assert_token(seq.cur(), "for", 0, 3, 1, 1, "for")
         seq.next()
         self.assert_token(seq.cur(), "if", 4, 2, 1, 5, "if")
@@ -75,7 +75,7 @@ class TestLexer(TestCase):
         self.assertTrue(seq.cur() is None)
 
     def test_types(self):
-        seq = TokenSequence("", "void char short int long float double")
+        seq = Tokens("", "void char short int long float double")
         self.assert_token(seq.cur(), "void", 0, 4, 1, 1, "void")
         seq.next()
         self.assert_token(seq.cur(), "char", 5, 4, 1, 6, "char")
@@ -93,7 +93,7 @@ class TestLexer(TestCase):
         self.assertTrue(seq.cur() is None)
 
     def test_num(self):
-        seq = TokenSequence("", "0 12 3141592653 12345678901234567890123456789")
+        seq = Tokens("", "0 12 3141592653 12345678901234567890123456789")
         self.assert_token(seq.cur(), "number", 0, 1, 1, 1, "0")
         seq.next()
         self.assert_token(seq.cur(), "number", 2, 2, 1, 3, "12")

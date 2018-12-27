@@ -1,19 +1,19 @@
 
-# asm.py
+# assembler/__init__.py
 # By Ben Anderson
 # December 2018
 
 
-class AsmGenerator:
+class Assembler:
     """
     Responsible for generating human-readable assembly code (as a string) from
-    the IR.
+    an IR graph.
     """
 
     def __init__(self, ir):
         """
         Create a generator that can write assembly code from an IR graph.
-        :param tokens: The IR graph to generate the assembly code from.
+        :param ir: The IR graph to generate the assembly code from.
         """
         self.ir = ir
 

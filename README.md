@@ -2,17 +2,17 @@
 The Cosec C Compiler
 --------------------
 
-Cosec is a toy optimising C compiler, written in Python. The goals of the
+Cosec is a toy optimising C compiler, written in Python. My goals for the 
 project are:
 
 * **Maintainable**: the source code is well commented and documented, written 
-in a clean, modular, easily maintainable, and extensible fashion.
+  in a clean, modular, easily maintainable, and extensible fashion.
 * **Complete**: the compiler doesn't strictly adhere to any of the C
-standards, but implements the most commonly used features of the C language.
+  standards, but implements the most commonly used features of the C language.
 * **Technically unique**: the compiler uses a select set of complex algorithms
-for parsing, optimisation, and code generation.
+  for parsing, optimisation, and code generation.
 * **Standalone**: the compiler doesn't have any external dependencies, and is 
-completely self-contained.
+  completely self-contained.
 
 Cosec is unique because it's one of the only hobby compilers to implement 
 complex optimisations only using an SSA form intermediate representation.
@@ -21,15 +21,20 @@ complex optimisations only using an SSA form intermediate representation.
 
 The major components of Cosec are:
 
-Component | Description | Reference
------------------------------------
-Lexer | Converts source code into a series of tokens | `lexer.py`
-Pre-processor | Deals with directives and comments | `preprocessor.py`
-AST generator | Converts a series of tokens into a structured syntax tree | `ast.py`
-IR generator | Converts an AST into a graph of basic blocks containing IR instructions | `ir.py`
-IR optimiser | Optimises the IR graph by running a series of optimisation passes | `opt/opt.py`
-Assembly generator | Converts an IR graph into assembly code | `asm.py`
-Assembler and linker | GNU binutils are used to assemble and link the assembly code | `cosec.py`
+* **Lexer**: converts C source code into an array of individual tokens.
+* **Pre-processor**: deals with pre-processor directives (e.g. `#include`) and
+  comments.
+* **Parser**: converts tokens produced by the lexer into an abstract syntax
+  tree.
+* **Compiler**: converts an AST into a graph of basic blocks containing
+  IR instructions.
+* **Optimiser**: optimises an IR graph to produce faster assembly code.
+* **Assembly Generator**: outputs architecture-specific assembly code from an 
+  IR graph.
+* **Assembler**: converts assembly code into machine code in the form of object
+  files. Cosec uses the GNU assembler on OSX and Linux.
+* **Linker**: links a list of object files together into a final executable. 
+  Cosec uses the GNU linker on OSX and Linux.
 
 ## Usage
 

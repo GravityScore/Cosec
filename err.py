@@ -9,7 +9,7 @@ import sys
 import os
 
 
-class CompilerError(Exception):
+class Error(Exception):
     """
     A generalised custom exception used throughout the compiler.
 
@@ -18,7 +18,7 @@ class CompilerError(Exception):
     from errors.
     """
 
-    def __init__(self, description: str):
+    def __init__(self, description: str, is_warning=False):
         """
         Create a compiler error.
 
@@ -31,9 +31,10 @@ class CompilerError(Exception):
         self.line_num = -1
         self.column_num = -1
         self.length = -1
+        self.is_warning = is_warning
 
     @staticmethod
-    def from_token(description: str, token: Token):
+    def from_token(description: str, token: Token, is_warning=False):
         """
         Create a compiler error centred on a token.
 
@@ -41,7 +42,7 @@ class CompilerError(Exception):
         :param token:       The token to center the error on.
         :return:            A compiler error.
         """
-        err = CompilerError(description)
+        err = Error(description, is_warning)
         err.set_file(token.file)
         err.set_location(token.line_num, token.column_num, token.line)
         err.set_length(token.length)
@@ -90,9 +91,13 @@ class CompilerError(Exception):
         and proper formatting.
         """
         # Error message
-        print_color(Color.RED)
         print_color(Color.BOLD)
-        print("error: ", end="")
+        if self.is_warning:
+            print_color(Color.YELLOW)
+            print("warning: ", end="")
+        else:
+            print_color(Color.RED)
+            print("error: ", end="")
         print_color(Color.WHITE)
         print(self.description, end="")
         print_color(Color.RESET)

@@ -3,7 +3,8 @@
 # By Ben Anderson
 # December 2018
 
-from err import CompilerError
+from parser.declarations import *
+from err import Error
 
 
 class Parser:

@@ -4,10 +4,12 @@
 # December 2018
 
 
-class TokenType:
+class Token:
     """
-    A list of all possible tokens that exist in the C language.
+    A token is the smallest building block of the C language, like a comma,
+    semicolon, number, or identifier.
     """
+
     # 3 character tokens
     RSHIFT_ASSIGN = ">>="
     LSHIFT_ASSIGN = "<<="
@@ -107,14 +109,7 @@ class TokenType:
     COMBINED = "combined"
     EOF = "end of file"
 
-
-class Token:
-    """
-    A token is the smallest building block of the C language, like a comma,
-    semicolon, number, or identifier.
-    """
-
-    def __init__(self, type: TokenType):
+    def __init__(self, type: str):
         """
         Create a new token with values initialised to some meaningless defaults.
 
@@ -130,7 +125,7 @@ class Token:
         self.source = ""
         self.contents = ""
 
-        # For TokenType.CONST_INT and TokenType.CONST_FLOAT only
+        # For CONST_INT and CONST_FLOAT only
         self.suffix = None
         self.number = None
 
@@ -149,34 +144,32 @@ class IntSuffix:
     """
     All possible suffixes for an integer (in lowercase).
     """
-    LONG = 0
-    LLONG = 1
-    UNSIGNED = 2
-    UNSIGNED_LONG = 3
-    UNSIGNED_LLONG = 4
+    LONG = "long"
+    LLONG = "long long"
+    UINT = "unsigned"
+    ULONG = "unsigned long"
+    ULLONG = "unsigned long long"
 
 
 class FloatSuffix:
     """
     All possible suffixes for a floating point number (in lowercase).
     """
-    FLOAT = 0
-    LONG_DOUBLE = 1
+    FLOAT = "float"
+    LDOUBLE = "long double"
 
 
 """
 A list of all reserved keywords.
 """
 KEYWORDS = [
-    TokenType.AUTO, TokenType.BREAK, TokenType.CASE, TokenType.CHAR,
-    TokenType.CONST, TokenType.CONTINUE, TokenType.DEFAULT, TokenType.DO,
-    TokenType.DOUBLE, TokenType.ELSE, TokenType.ENUM, TokenType.EXTERN,
-    TokenType.FLOAT, TokenType.FOR, TokenType.GOTO, TokenType.IF,
-    TokenType.INLINE, TokenType.INT, TokenType.LONG, TokenType.REGISTER,
-    TokenType.RESTRICT, TokenType.RETURN, TokenType.SHORT, TokenType.SIGNED,
-    TokenType.SIZEOF, TokenType.STATIC, TokenType.STRUCT, TokenType.SWITCH,
-    TokenType.TYPEDEF, TokenType.UNION, TokenType.UNSIGNED, TokenType.VOID,
-    TokenType.VOLTATILE, TokenType.WHILE,
+    Token.AUTO, Token.BREAK, Token.CASE, Token.CHAR, Token.CONST,
+    Token.CONTINUE, Token.DEFAULT, Token.DO, Token.DOUBLE, Token.ELSE,
+    Token.ENUM, Token.EXTERN, Token.FLOAT, Token.FOR, Token.GOTO, Token.IF,
+    Token.INLINE, Token.INT, Token.LONG, Token.REGISTER, Token.RESTRICT,
+    Token.RETURN, Token.SHORT, Token.SIGNED, Token.SIZEOF, Token.STATIC,
+    Token.STRUCT, Token.SWITCH, Token.TYPEDEF, Token.UNION, Token.UNSIGNED,
+    Token.VOID, Token.VOLTATILE, Token.WHILE,
 ]
 
 
@@ -185,24 +178,22 @@ A list of all syntax tokens, in descending order of length.
 """
 SYNTAX_TOKENS = [
     # 3 character tokens
-    TokenType.RSHIFT_ASSIGN, TokenType.LSHIFT_ASSIGN, TokenType.ELLIPSIS,
+    Token.RSHIFT_ASSIGN, Token.LSHIFT_ASSIGN, Token.ELLIPSIS,
 
     # 2 character tokens
-    TokenType.INC, TokenType.DEC, TokenType.ADD_ASSIGN, TokenType.SUB_ASSIGN,
-    TokenType.MUL_ASSIGN, TokenType.DIV_ASSIGN, TokenType.MOD_ASSIGN,
-    TokenType.AND_ASSIGN, TokenType.OR_ASSIGN, TokenType.XOR_ASSIGN,
-    TokenType.RSHIFT, TokenType.LSHIFT, TokenType.ARROW, TokenType.LOGICAL_AND,
-    TokenType.LOGICAL_OR, TokenType.GE, TokenType.LE, TokenType.EQ,
-    TokenType.NEQ,
+    Token.INC, Token.DEC, Token.ADD_ASSIGN, Token.SUB_ASSIGN, Token.MUL_ASSIGN,
+    Token.DIV_ASSIGN, Token.MOD_ASSIGN, Token.AND_ASSIGN, Token.OR_ASSIGN,
+    Token.XOR_ASSIGN, Token.RSHIFT, Token.LSHIFT, Token.ARROW,
+    Token.LOGICAL_AND, Token.LOGICAL_OR, Token.GE, Token.LE, Token.EQ,
+    Token.NEQ,
 
     # 1 character tokens
-    TokenType.ADD, TokenType.SUB, TokenType.MUL, TokenType.DIV, TokenType.MOD,
-    TokenType.GT, TokenType.LT, TokenType.ASSIGN, TokenType.SEMICOLON,
-    TokenType.COMMA, TokenType.OPEN_PAREN, TokenType.CLOSE_PAREN,
-    TokenType.OPEN_BRACKET, TokenType.CLOSE_BRACKET, TokenType.OPEN_BRACE,
-    TokenType.CLOSE_BRACE, TokenType.COLON, TokenType.DOT,
-    TokenType.BITWISE_AND, TokenType.BITWISE_OR, TokenType.BITWISE_XOR,
-    TokenType.BITWISE_NOT, TokenType.LOGICAL_NOT, TokenType.TERNARY,
+    Token.ADD, Token.SUB, Token.MUL, Token.DIV, Token.MOD, Token.GT, Token.LT,
+    Token.ASSIGN, Token.SEMICOLON, Token.COMMA, Token.OPEN_PAREN,
+    Token.CLOSE_PAREN, Token.OPEN_BRACKET, Token.CLOSE_BRACKET,
+    Token.OPEN_BRACE, Token.CLOSE_BRACE, Token.COLON, Token.DOT,
+    Token.BITWISE_AND, Token.BITWISE_OR, Token.BITWISE_XOR, Token.BITWISE_NOT,
+    Token.LOGICAL_NOT, Token.TERNARY,
 ]
 
 
@@ -211,7 +202,7 @@ A mapping between characters and their corresponding float suffix.
 """
 FLOAT_SUFFIXES = {
     "f": FloatSuffix.FLOAT, "F": FloatSuffix.FLOAT,
-    "l": FloatSuffix.LONG_DOUBLE, "L": FloatSuffix.LONG_DOUBLE,
+    "l": FloatSuffix.LDOUBLE, "L": FloatSuffix.LDOUBLE,
 }
 
 
@@ -221,13 +212,13 @@ A list of all integer suffixes.
 INT_SUFFIXES = {
     "l": IntSuffix.LONG, "L": IntSuffix.LONG,
     "ll": IntSuffix.LLONG, "LL": IntSuffix.LLONG,
-    "u": IntSuffix.UNSIGNED, "U": IntSuffix.UNSIGNED,
-    "ul": IntSuffix.UNSIGNED_LONG, "uL": IntSuffix.UNSIGNED_LONG,
-    "Ul": IntSuffix.UNSIGNED_LONG, "UL": IntSuffix.UNSIGNED_LONG,
-    "lu": IntSuffix.UNSIGNED_LONG, "lU": IntSuffix.UNSIGNED_LONG,
-    "Lu": IntSuffix.UNSIGNED_LONG, "LU": IntSuffix.UNSIGNED_LONG,
-    "ull": IntSuffix.UNSIGNED_LLONG, "uLL": IntSuffix.UNSIGNED_LLONG,
-    "Ull": IntSuffix.UNSIGNED_LLONG, "ULL": IntSuffix.UNSIGNED_LLONG,
-    "llu": IntSuffix.UNSIGNED_LLONG, "llU": IntSuffix.UNSIGNED_LLONG,
-    "LLu": IntSuffix.UNSIGNED_LLONG, "LLU": IntSuffix.UNSIGNED_LLONG,
+    "u": IntSuffix.UINT, "U": IntSuffix.UINT,
+    "ul": IntSuffix.ULONG, "uL": IntSuffix.ULONG,
+    "Ul": IntSuffix.ULONG, "UL": IntSuffix.ULONG,
+    "lu": IntSuffix.ULONG, "lU": IntSuffix.ULONG,
+    "Lu": IntSuffix.ULONG, "LU": IntSuffix.ULONG,
+    "ull": IntSuffix.ULLONG, "uLL": IntSuffix.ULLONG,
+    "Ull": IntSuffix.ULLONG, "ULL": IntSuffix.ULLONG,
+    "llu": IntSuffix.ULLONG, "llU": IntSuffix.ULLONG,
+    "LLu": IntSuffix.ULLONG, "LLU": IntSuffix.ULLONG,
 }

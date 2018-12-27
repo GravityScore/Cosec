@@ -11,7 +11,7 @@ import subprocess
 
 from lexer import Tokens
 from parser import Parser
-from err import CompilerError, Color, print_color
+from err import Error, Color, print_color
 
 
 def main():
@@ -37,7 +37,7 @@ def main():
             # Otherwise, proceed with compilation
             assert_platform()
             process_files(args["files"], args["output"])
-    except CompilerError as err:
+    except Error as err:
         # Pretty print all compiler errors to the standard output
         err.print()
         return 1
@@ -65,12 +65,12 @@ def parse_args():
         elif arg == "-o":
             # Check there's another argument to follow
             if idx >= len(sys.argv) - 1:
-                raise CompilerError("missing argument to '-o'")
+                raise Error("missing argument to '-o'")
             idx += 1
             args["output"] = sys.argv[idx]
         elif arg[0] == "-":
             # Unknown command line option (wasn't handled above)
-            raise CompilerError(f"unknown option '{arg}'")
+            raise Error(f"unknown option '{arg}'")
         else:
             args["files"].append(arg)
         idx += 1
@@ -113,11 +113,11 @@ def assert_platform():
     """
     # Check operating system
     if sys.platform != "darwin":
-        raise CompilerError("Only macOS is supported (for now)")
+        raise Error("Only macOS is supported (for now)")
 
     # Check processor architecture
     if platform.machine() != "x86_64":
-        raise CompilerError("Only x86-64 platforms are supported (for now)")
+        raise Error("Only x86-64 platforms are supported (for now)")
 
 
 def process_files(files, exec_file):
@@ -132,7 +132,7 @@ def process_files(files, exec_file):
     """
     # Check the user actually supplied at least one file to compile
     if len(files) == 0:
-        raise CompilerError("no input files")
+        raise Error("no input files")
 
     # Compile each .c file into a .o file with the same base file name
     object_files = []
@@ -148,7 +148,7 @@ def process_files(files, exec_file):
         elif extension == ".o":
             object_files.append(file)
         else:
-            raise CompilerError(f"'{file}' must be a '.c' or '.o' file")
+            raise Error(f"'{file}' must be a '.c' or '.o' file")
 
     # Link all the object files into an executable
     # link(object_files, exec_file)
@@ -183,7 +183,7 @@ def compile(src_file, asm_file):
     #     with open(asm_file, "w") as file:
     #         file.write(asm_code)
     # except IOError as io_err:
-    #     raise CompilerError(f"failed to write to '{asm_file}'") from io_err
+    #     raise Error(f"failed to write to '{asm_file}'") from io_err
 
 
 def assemble(asm_file, obj_file):
@@ -197,7 +197,7 @@ def assemble(asm_file, obj_file):
     if sys.platform == "darwin":
         assembler_options = []
     else:
-        raise CompilerError("Only macOS is supported")
+        raise Error("Only macOS is supported")
 
     # Invoke the assembler
     try:
@@ -205,7 +205,7 @@ def assemble(asm_file, obj_file):
                               ["-o", obj_file, asm_file])
     except subprocess.CalledProcessError as err:
         # TODO: more descriptive error
-        raise CompilerError(f"assembler failed for '{asm_file}'") from err
+        raise Error(f"assembler failed for '{asm_file}'") from err
 
 
 def link(obj_files, exec_file):
@@ -219,7 +219,7 @@ def link(obj_files, exec_file):
     if sys.platform == "darwin":
         assembler_options = ["-macosx_version_min", "10.7", "-no_pie"]
     else:
-        raise CompilerError("Only macOS is supported")
+        raise Error("Only macOS is supported")
 
     # Invoke the linker
     try:
@@ -227,7 +227,7 @@ def link(obj_files, exec_file):
                               ["-o", exec_file] + obj_files)
     except subprocess.CalledProcessError as err:
         # TODO: more descriptive error
-        raise CompilerError(f"linker failed for '{exec_file}'") from err
+        raise Error(f"linker failed for '{exec_file}'") from err
 
 
 def read_file(path):
@@ -240,7 +240,7 @@ def read_file(path):
         with open(path, "r") as file:
             return file.read()
     except IOError as err:
-        raise CompilerError(f"failed to read file '{path}'") from err
+        raise Error(f"failed to read file '{path}'") from err
 
 
 if __name__ == "__main__":

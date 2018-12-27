@@ -3,10 +3,9 @@
 # By Ben Anderson
 # December 2018
 
-from lexer.tokens import TokenType, Token, IntSuffix, FloatSuffix
-from lexer.tokens import KEYWORDS, SYNTAX_TOKENS, INT_SUFFIXES, FLOAT_SUFFIXES
-from lexer.scanner import Scanner
-from err import CompilerError
+from lexer.tokens import *
+from lexer.scanner import *
+from err import Error
 
 import string
 
@@ -36,7 +35,7 @@ class Lexer:
         """
         # End of file
         if self.scanner.is_eof():
-            return self.token(TokenType.EOF, 0)
+            return self.token(Token.EOF, 0)
 
         # Whitespace
         if self.scanner.cur().isspace():
@@ -70,7 +69,7 @@ class Lexer:
         :return: An identifier token.
         """
         # Find the first non-alphabetic, non-numeric character
-        token = self.token(TokenType.IDENT, 0)
+        token = self.token(Token.IDENT, 0)
         while not self.scanner.is_eof() and is_ident_continue(self.scanner.cur()):
             self.scanner.next()
         token.set_length(self.scanner.cursor - token.start)
@@ -103,7 +102,7 @@ class Lexer:
 
         :return: A number token.
         """
-        token = self.token(TokenType.CONST_FLOAT, 0)
+        token = self.token(Token.CONST_FLOAT, 0)
         token.start -= 2  # Include the hex prefix
         start = self.scanner.cursor
 
@@ -120,7 +119,7 @@ class Lexer:
         if ch != "p" and ch != "P":
             token.set_length(self.scanner.cursor - token.start)
             desc = "hexadecimal floats require an exponent"
-            raise CompilerError.from_token(desc, token)
+            raise Error.from_token(desc, token)
 
         # Consume the exponent character
         self.scanner.next()
@@ -178,7 +177,7 @@ class Lexer:
 
         :return: A number token.
         """
-        token = self.token(TokenType.CONST_FLOAT, 0)
+        token = self.token(Token.CONST_FLOAT, 0)
         token.start -= 2  # Include the hex prefix
         start = self.scanner.cursor
 
@@ -237,7 +236,7 @@ class Lexer:
         predicate = predicates[base]
 
         # Consume a series of valid digits
-        token = self.token(TokenType.CONST_INT, 0)
+        token = self.token(Token.CONST_INT, 0)
         while predicate(self.scanner.cur()):
             self.scanner.next()
 
@@ -307,7 +306,7 @@ class Lexer:
                 return token
         return None
 
-    def token(self, type: TokenType, length: int):
+    def token(self, type: str, length: int):
         """
         Creates a new token with the given type and arrow length. Copies across
         the file, line, and column information from the scanner.
@@ -351,7 +350,7 @@ class Tokens:
             self.tokens.append(token)
 
             # Stop when we reach the end of the file
-            if token.type == TokenType.EOF:
+            if token.type == Token.EOF:
                 break
 
     def cur(self):
@@ -386,7 +385,7 @@ class Tokens:
         else:
             return self.tokens[self.current + amount]
 
-    def expect(self, expected: TokenType):
+    def expect(self, expected: Token):
         """
         Triggers an exception if the current token is not of the expected type.
 
@@ -394,7 +393,7 @@ class Tokens:
         """
         if self.cur().type != expected:
             desc = f"expected '{expected}', got '{self.cur().contents}'"
-            raise CompilerError.from_token(desc, self.cur())
+            raise Error.from_token(desc, self.cur())
 
     def save(self):
         """
@@ -430,7 +429,7 @@ class Tokens:
             return self.combine(end_tk, start_tk)  # Swap the order
 
         # Create the combined token
-        token = Token(TokenType.COMBINED)
+        token = Token(Token.COMBINED)
         token.file = start_tk.file
         token.start = start_tk.start
         token.line_num = start_tk.line_num

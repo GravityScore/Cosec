@@ -3,7 +3,7 @@
 # By Ben Anderson
 # December 2018
 
-from err import CompilerError
+from err import Error
 
 
 class AstGenerator:
@@ -67,7 +67,7 @@ class AstGenerator:
 
         # Ensure we actually have a declarator
         if declarator.name is None and len(declarator.stack) == 0:
-            raise CompilerError.from_tk("expected declarator", self.seq.cur())
+            raise Error.from_tk("expected declarator", self.seq.cur())
 
         # Ensure the declarator satisfies the above constraints
         # TODO: e.g. static and cvr can only occur on outermost arrays in
@@ -314,12 +314,12 @@ class AstGenerator:
                                   "register"}:
                 # Check we're not only allowing type specifiers and qualifiers
                 if specifier_qualifier_only:
-                    raise CompilerError.from_tk("cannot use storage class here",
-                                                specifier)
+                    raise Error.from_tk("cannot use storage class here",
+                                        specifier)
 
                 # Check we haven't already got a storage class
                 if specifiers.storage_class is not None:
-                    raise CompilerError.from_tk("cannot specify more than one "
+                    raise Error.from_tk("cannot specify more than one "
                                                 "storage class", specifier)
                 specifiers.storage_class = specifier.type
                 self.seq.next()
@@ -341,8 +341,8 @@ class AstGenerator:
                 # Check the type specifier list actually matched one of the
                 # above lists
                 if type is None:
-                    raise CompilerError.from_tk("cannot combine type specifier",
-                                                specifier)
+                    raise Error.from_tk("cannot combine type specifier",
+                                        specifier)
                 specifiers.type_specifier = type
                 self.seq.next()
 
@@ -355,7 +355,7 @@ class AstGenerator:
             elif specifier.type in {"inline"}:
                 # Check we're not only allowing type specifiers and qualifiers
                 if specifier_qualifier_only:
-                    raise CompilerError.from_tk("cannot use function specifier "
+                    raise Error.from_tk("cannot use function specifier "
                                                 "here", specifier)
                 specifiers.function_specifiers.add(specifier.type)
                 self.seq.next()
@@ -364,8 +364,8 @@ class AstGenerator:
 
         # We require at least one type specifier
         if len(type_specifiers) == 0:
-            raise CompilerError.from_tk("expected declaration specifier",
-                                        self.seq.cur())
+            raise Error.from_tk("expected declaration specifier",
+                                self.seq.cur())
         return specifiers
 
     def parse_expression(self):
@@ -464,7 +464,7 @@ class AstGenerator:
         try:
             specifiers = self.parse_declaration_specifiers(
                 specifier_qualifier_only=True)
-        except CompilerError:
+        except Error:
             # We failed to parse a type specifier, so try a unary
             # expression. Return to the saved location
             self.seq.restore(saved)

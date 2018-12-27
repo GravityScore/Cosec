@@ -3,7 +3,7 @@
 # By Ben Anderson
 # December 2018
 
-from err import CompilerError
+from err import Error
 
 
 class Scanner:
@@ -138,7 +138,7 @@ class Scanner:
                              arrow at.
         :param length:       The length of the arrow.
         """
-        err = CompilerError(description)
+        err = Error(description)
         err.set_file(self.file)
         err.set_location(self.line_num, self.column_num + offset, self.line)
         err.set_length(length)

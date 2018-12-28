@@ -1,9 +1,7 @@
 
-# err.py
+# error.py
 # By Ben Anderson
 # December 2018
-
-from lexer import Token
 
 import sys
 import os
@@ -13,16 +11,17 @@ class Error(Exception):
     """
     A generalised custom exception used throughout the compiler.
 
-    Our error handling philosophy is simple: when something goes wrong, raise an
+    The error handling philosophy is simple: when something goes wrong, raise an
     exception immediately and terminate compilation. We don't try to recover
     from errors.
     """
 
-    def __init__(self, description: str, is_warning=False):
+    def __init__(self, description: str, token=None):
         """
         Create a compiler error.
 
         :param description: The error message to display.
+        :param token:       An optional token to center the error on.
         """
         super().__init__()
         self.description = description
@@ -31,22 +30,12 @@ class Error(Exception):
         self.line_num = -1
         self.column_num = -1
         self.length = -1
-        self.is_warning = is_warning
 
-    @staticmethod
-    def from_token(description: str, token: Token, is_warning=False):
-        """
-        Create a compiler error centred on a token.
-
-        :param description: The error message to display.
-        :param token:       The token to center the error on.
-        :return:            A compiler error.
-        """
-        err = Error(description, is_warning)
-        err.set_file(token.file)
-        err.set_location(token.line_num, token.column_num, token.line)
-        err.set_length(token.length)
-        return err
+        # If we were given a token
+        if token is not None:
+            self.set_file(token.file)
+            self.set_location(token.line_num, token.column_num, token.line)
+            self.set_length(token.length)
 
     def set_file(self, file: str):
         """
@@ -90,18 +79,8 @@ class Error(Exception):
         Pretty prints the error to the standard error output, using colors
         and proper formatting.
         """
-        # Error message
-        print_color(Color.BOLD)
-        if self.is_warning:
-            print_color(Color.YELLOW)
-            print("warning: ", end="")
-        else:
-            print_color(Color.RED)
-            print("error: ", end="")
-        print_color(Color.WHITE)
-        print(self.description, end="")
-        print_color(Color.RESET)
-        print("")  # End the line
+        # Description
+        self._print_description()
 
         # File
         if self.file is None or len(self.file) == 0:
@@ -146,6 +125,41 @@ class Error(Exception):
         print_color(Color.YELLOW)
         print_color(Color.BOLD)
         print("^" + "~" * (self.length - 1), end="")
+        print_color(Color.RESET)
+        print("")  # End the line
+
+    def _print_description(self):
+        """
+        This method is separate from the normal print so we can modify it in
+        subclasses.
+        :return:
+        """
+        print_color(Color.BOLD)
+        print_color(Color.RED)
+        print("error: ", end="")
+        print_color(Color.WHITE)
+        print(self.description, end="")
+        print_color(Color.RESET)
+        print("")  # End the line
+
+
+class Warning(Error):
+    """
+    A warning isn't fatal and doesn't halt compilation, it just notifies the
+    programmer that something's not quite right.
+    """
+
+    def _print_description(self):
+        """
+        This method is separate from the normal print so we can modify it in
+        subclasses.
+        :return:
+        """
+        print_color(Color.BOLD)
+        print_color(Color.YELLOW)
+        print("warning: ", end="")
+        print_color(Color.RED)
+        print(self.description, end="")
         print_color(Color.RESET)
         print("")  # End the line
 

@@ -1,5 +1,5 @@
 
-# assembler/__init__.py
+# assembler.py
 # By Ben Anderson
 # December 2018
 
@@ -13,6 +13,7 @@ class Assembler:
     def __init__(self, ir):
         """
         Create a generator that can write assembly code from an IR graph.
+
         :param ir: The IR graph to generate the assembly code from.
         """
         self.ir = ir
@@ -20,6 +21,7 @@ class Assembler:
     def gen(self):
         """
         Generate assembly code from the IR.
+
         :return: The assembly code as a string.
         """
         return None

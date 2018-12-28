@@ -11,7 +11,7 @@ import subprocess
 
 from lexer import Tokens
 from parser import Parser
-from err import Error, Color, print_color
+from error import Error, Color, print_color
 
 
 def main():

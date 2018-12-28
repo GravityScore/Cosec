@@ -50,6 +50,8 @@ Use the built in help function for more details about the command line options:
 $ python cosec.py --help
 ```
 
+Note that Python 3.7 is the minimum required version.
+
 ## License
 
 Cosec is under the MIT license. See the `LICENSE` file for more details.

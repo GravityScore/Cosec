@@ -4,6 +4,8 @@
 # December 2018
 
 from __future__ import annotations
+from typing import Optional
+from enum import Enum
 
 from lexer import Tokens, Token
 from error import Error, Warning
@@ -70,7 +72,7 @@ class DeclarationSpecifiers(Node):
         self.function_specifiers = set()
 
 
-class StorageClass:
+class StorageClass(Enum):
     """
     All storage classes that can occur in a set of declaration specifiers. These
     are only legal in a root declaration at the top level of a source code file.
@@ -82,7 +84,7 @@ class StorageClass:
     REGISTER = Token.REGISTER
 
 
-class TypeSpecifier:
+class TypeSpecifier(Enum):
     """
     All type specifiers that can occur in a set of declaration specifiers.
     """
@@ -105,7 +107,7 @@ class TypeSpecifier:
     ULLONG = "ullong"  # Unsigned 64 bit integer
 
 
-class TypeQualifier:
+class TypeQualifier(Enum):
     """
     All type qualifiers that can occur in a set of declaration specifiers.
     """
@@ -114,7 +116,7 @@ class TypeQualifier:
     VOLATILE = Token.VOLTATILE
 
 
-class FunctionSpecifier:
+class FunctionSpecifier(Enum):
     """
     All function specifiers that can occur in a set of declaration specifiers.
     These are only legal in function declarations and definitions at the top
@@ -183,6 +185,17 @@ class Expression(Node):
     of an expression.
     """
     pass
+
+
+class ExpressionList(Expression):
+    """
+    An expression can contain multiple subexpressions (called roots) separated
+    by commas. This object keeps a list of these subexpressions.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.roots = []
 
 
 class TernaryExpression(Expression):
@@ -320,7 +333,7 @@ class ConstantExpression(Expression):
         self.value = value
 
 
-class Precedence:
+class Precedence(Enum):
     """
     A list of all possible precedences.
     """
@@ -339,7 +352,7 @@ class Precedence:
     MUL = 12
 
 
-class BinaryOperator:
+class BinaryOperator(Enum):
     """
     A list of all binary operators, and their corresponding tokens.
     """
@@ -375,7 +388,7 @@ class BinaryOperator:
     MOD = Token.MOD
 
 
-class UnaryOperator:
+class UnaryOperator(Enum):
     """
     A list of all possible unary operators, and their corresponding tokens.
     """
@@ -408,6 +421,10 @@ class Parser:
         """
         self.t = tokens
 
+    # **************************************************************************
+    #     Declaration Parsing
+    # **************************************************************************
+
     def parse_declarations(self) -> list:
         """
         Parse a list of declarations. The relevant grammar is:
@@ -431,7 +448,8 @@ class Parser:
 
         # Parse a list of declarators and initializers
         declarations = []
-        while self.t.cur().type != Token.SEMICOLON:
+        while self.t.cur().type != Token.EOF and \
+                self.t.cur().type != Token.SEMICOLON:
             start = self.t.cur()
 
             # Parse a declarator
@@ -480,6 +498,32 @@ class Parser:
         if self.t.cur().type != Token.CLOSE_PAREN and \
                 self.t.cur().type != Token.COMMA:
             type.declarator = self.parse_declarator()
+        return type
+
+    def try_parse_type(self) -> Optional[Type]:
+        """
+        Try parse a type surrounded in parentheses. If no valid type exists,
+        then return None.
+
+        :return: A type, or None.
+        """
+        # Check for an opening parenthesis
+        if self.t.cur().type != Token.OPEN_PAREN:
+            return None
+        self.t.next()
+
+        # Try parsing a type
+        saved = self.t.save()
+        try:
+            type = self.parse_type()
+        except Error:
+            type = None
+            self.t.restore(saved)
+
+        # If we found a type, expect a closing parenthesis
+        if type is not None:
+            self.t.expect(Token.CLOSE_PAREN)
+            self.t.next()
         return type
 
     def parse_declaration_specifiers(self) -> DeclarationSpecifiers:
@@ -725,7 +769,8 @@ class Parser:
 
         # Parse a list of argument declarations
         function = DeclaratorFunctionPart()
-        while self.t.cur().type != Token.CLOSE_PAREN:
+        while self.t.cur().type != Token.EOF and \
+                self.t.cur().type != Token.CLOSE_PAREN:
             arg = self.parse_type()
             function.args.append(arg)
 
@@ -800,7 +845,332 @@ class Parser:
         array.range = start.combine(self.t.prev())
         return array
 
+    # **************************************************************************
+    #     Expression Parsing
+    # **************************************************************************
 
+    def parse_expression(self) -> ExpressionList:
+        """
+        Parse an expression from a list of tokens. The relevant grammar is:
+
+          expression
+            : assignment_expression
+            | expression ',' assignment_expression
+
+        :return: An expression list.
+        """
+        # Parse expressions separated by commas
+        expr_list = ExpressionList()
+        while True:
+            root = self.parse_expression_root(Precedence.NONE)
+            expr_list.roots.append(root)
+
+            # Check for a comma
+            if self.t.cur().type == Token.COMMA:
+                self.t.next()
+            else:
+                break
+        return expr_list
+
+    def parse_expression_root(self, min_precedence: Precedence) -> Expression:
+        """
+        Parse binary operations as long as the operator has a precedence greater
+        than the minimum.
+
+        :param min_precedence: The minimum precedence for binary operators.
+        :return:               An expression tree.
+        """
+        # Parse the left operand
+        left = self.parse_cast_expression()
+
+        # Keep parsing binary operators while their precedence is greater than
+        # the minimum
+        while self.t.cur().type in BINARY_OPERATORS:
+            # Check the precedence is greater than the minimum
+            operator = BinaryOperator(self.t.cur().type)
+            precedence = PRECEDENCES[operator]
+            if precedence <= min_precedence:
+                break
+            self.t.next()
+
+            # Parse the right operand
+            right = self.parse_expression_root(precedence)
+
+            # Check for a ternary operator
+            if operator == BinaryOperator.TERNARY:
+                # Expect a colon
+                self.t.expect(Token.COLON)
+                self.t.next()
+
+                # Parse another expression
+                after = self.parse_expression_root(precedence)
+
+                # Construct a ternary operation
+                left = TernaryExpression(left, right, after)
+            else:
+                # Construct a binary operation
+                left = BinaryExpression(operator, left, right)
+        return left
+
+    def parse_cast_expression(self) -> Expression:
+        """
+        Parse an optional cast of an expression to another type. The relevant
+        grammar is:
+
+          cast_expression
+            : unary_expression
+            | '(' type_name ')' cast_expression
+
+        :return: A cast expression.
+        """
+        # Check for an open parenthesis
+        if self.t.cur().type != Token.OPEN_PAREN:
+            return self.parse_sizeof_expression()
+
+        # An open parenthesis here could indicate either a cast or a
+        # subexpression; try parsing a type name
+        type = self.try_parse_type()
+
+        if type is None:
+            # Failed to parse a type name, try a subexpression
+            return self.parse_sizeof_expression()
+        else:
+            # Check the declarator is abstract
+            if type.declarator is not None and type.declarator.name is not None:
+                desc = "expected abstract declarator"
+                raise Error(desc, type.declarator.name)
+
+            # Parse the unary expression that follows
+            operand = self.parse_sizeof_expression()
+            return CastExpression(type, operand)
+
+    def parse_sizeof_expression(self) -> Expression:
+        """
+        Parse a sizeof expression. There are 2 uses of sizeof, either to measure
+        the size of an expression, or the size of an explicit type name. The
+        first sort is represented as a unary operator on an expression, and the
+        second as this special expression tree node.
+
+        :return: A sizeof expression.
+        """
+        # Check we've got a sizeof operator
+        if self.t.cur().type != Token.SIZEOF:
+            return self.parse_unary_expression()
+        self.t.next()
+
+        # Try parsing a type in parentheses
+        if self.t.cur().type == Token.OPEN_PAREN:
+            type = self.try_parse_type()
+            if type is not None:
+                return SizeofExpression(type)
+
+        # Otherwise, expect an expression (don't allow casting of the operand)
+        operand = self.parse_unary_expression()
+        return UnaryExpression(UnaryOperator.SIZEOF, operand)
+
+    def parse_unary_expression(self) -> Expression:
+        """
+        Parse a unary or prefix operation. The relevant grammar is:
+
+          unary_expression
+            : postfix_expression
+            | INC_OP unary_expression
+            | DEC_OP unary_expression
+            | unary_operator cast_expression
+            | SIZEOF unary_expression
+            | SIZEOF '(' type_name ')'
+
+          unary_operator: '&' | '*' | '+' | '-' | '~' | '!'
+
+        :return:  A unary expression.
+        """
+        # Check for a unary operator
+        operator = UnaryOperator(self.t.cur().type)
+        if operator not in UNARY_OPERATORS:
+            return self.parse_postfix_expression()
+        self.t.next()
+
+        # Parse the operand
+        if operator == UnaryOperator.INC or operator == UnaryOperator.DEC:
+            # Don't allow casting for prefix operators
+            operand = self.parse_unary_expression()
+        else:
+            operand = self.parse_cast_expression()
+        return UnaryExpression(operator, operand)
+
+    def parse_postfix_expression(self) -> Expression:
+        """
+        Parse a postfix operation, including postfix operators, array accesses,
+        function calls, or struct field accesses.
+
+          postfix_expression
+            : primary_expression
+            | postfix_expression '[' expression ']'
+            | postfix_expression '(' ')'
+            | postfix_expression '(' argument_expression_list ')'
+            | postfix_expression '.' IDENTIFIER
+            | postfix_expression PTR_OP IDENTIFIER
+            | postfix_expression INC_OP
+            | postfix_expression DEC_OP
+            | '(' type_name ')' '{' initializer_list '}'      TODO
+            | '(' type_name ')' '{' initializer_list ',' '}'  TODO
+
+          argument_expression_list
+            : assignment_expression
+            | argument_expression_list ',' assignment_expression
+
+        :return: A postfix expression.
+        """
+        # Parse a primary expression
+        result = self.parse_primary_expression()
+
+        # Continually parse postfix expressions
+        while True:
+            if self.t.cur().type == Token.OPEN_BRACKET:
+                result = self.parse_array_access_expression(result)
+            elif self.t.cur().type == Token.OPEN_PAREN:
+                result = self.parse_function_call_expression(result)
+            elif self.t.cur().type == Token.DOT:
+                result = self.parse_field_access_expression(result)
+            elif self.t.cur().type == Token.ARROW:
+                result = self.parse_deref_access_expression(result)
+            elif self.t.cur().type == Token.INC or \
+                    self.t.cur().type == Token.DEC:
+                self.t.next()
+                operator = UnaryOperator(self.t.cur().type)
+                result = PostfixExpression(operator, result)
+            else:
+                # No more postfix expressions
+                break
+        return result
+
+    def parse_array_access_expression(self, array: Expression) -> Expression:
+        """
+        Parse an array access after a primary expression.
+
+        :param array: The array that we're accessing.
+        :return:      An array access expression node.
+        """
+        # Expect an opening bracket
+        self.t.expect(Token.OPEN_BRACKET)
+        self.t.next()
+
+        # Parse the index within the brackets
+        index = self.parse_expression()
+
+        # Expect a closing bracket
+        self.t.expect(Token.CLOSE_BRACKET)
+        self.t.next()
+        return ArrayAccessExpression(array, index)
+
+    def parse_function_call_expression(self, func: Expression) -> Expression:
+        """
+        Parse a function call after a primary expression.
+
+        :param func: The function that we're calling.
+        :return:     A function call expression node.
+        """
+        # Parse opening parenthesis
+        self.t.expect(Token.OPEN_PAREN)
+        self.t.next()
+
+        # Parse arguments
+        args = []
+        while self.t.cur().type != Token.CLOSE_PAREN:
+            # Parse an argument
+            args.append(self.parse_expression_root(Precedence.NONE))
+
+            # Expect a comma if we haven't reached the end of the arguments
+            if self.t.cur().type == Token.COMMA:
+                self.t.next()
+            else:
+                break
+
+        # Expect a closing parenthesis
+        self.t.expect(Token.CLOSE_PAREN)
+        self.t.next()
+        return FunctionCallExpression(func, args)
+
+    def parse_field_access_expression(self, struct: Expression) -> Expression:
+        """
+        Parse a struct field access through a direct access (using '.').
+
+        :param struct: The struct to access a field on.
+        :return:       A field access expression node.
+        """
+        # Parse the dot
+        self.t.expect(Token.DOT)
+        self.t.next()
+
+        # Parse the field to access
+        self.t.expect(Token.IDENT)
+        access = FieldAccessExpression(struct, self.t.cur())
+        self.t.next()
+        return access
+
+    def parse_deref_access_expression(self, struct: Expression) -> Expression:
+        """
+        Parse a struct field access through a dereference access (using '->').
+
+        :param struct: The struct to access a field on.
+        :return:       A field access expression node.
+        """
+        # Parse the arrow
+        self.t.expect(Token.ARROW)
+        self.t.next()
+
+        # Parse the field to access
+        self.t.expect(Token.IDENT)
+        field = self.t.cur()
+        self.t.next()
+
+        # Dereference the struct first, then access a field on it
+        deref = UnaryExpression(UnaryOperator.DEREF, struct)
+        access = FieldAccessExpression(deref, field)
+        return access
+
+    def parse_primary_expression(self) -> Expression:
+        """
+        Parse a primary expression, including symbols, constants, and
+        subexpressions. The relevant grammar is:
+
+          primary_expression
+            : IDENTIFIER
+            | constant
+            | string
+            | '(' expression ')'
+
+          constant
+            : INTEGER_CONSTANT
+            | FLOAT_CONSTANT
+            | ENUMERATION_CONSTANT
+
+        :return: A primary expression.
+        """
+        type = self.t.cur().type
+        if type == Token.IDENT:
+            # Parse a symbol from an identifier
+            result = SymbolExpression(self.t.cur())
+            self.t.next()
+        elif type != Token.CONST_INT and type != Token.CONST_FLOAT and \
+                type != Token.CONST_CHAR and type != Token.CONST_STR:
+            # Parse a constant
+            result = ConstantExpression(self.t.cur())
+            self.t.next()
+        elif type == Token.OPEN_PAREN:
+            # Skip the open parenthesis
+            self.t.next()
+
+            # Parse the expression contained in the parentheses
+            result = self.parse_expression()
+
+            # Expect a closing parenthesis
+            self.t.expect(Token.CLOSE_PAREN)
+            self.t.next()
+        else:
+            # Expected expression error
+            raise Error("expected expression", self.t.cur())
+        return result
 
 
 """

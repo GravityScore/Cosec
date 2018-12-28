@@ -288,13 +288,15 @@ class Declarator:
             | direct_declarator '(' identifiers ')'      NOT SUPPORTED
             | direct_declarator '(' ')'
 
-        This function parses both named and abstract declarators. Note the old
-        K&R style function definitions are not supported. You can find
-        information on using 'static' and type qualifiers in array declarators
-        here:
+          pointer
+            : '*' type_qualifiers pointer
+            | '*' type_qualifiers
+            | '*' pointer
+            | '*'
 
-          https://stackoverflow.com/questions/17559631/what-are-those-strange-
-          array-sizes-and-static-in-c99
+        This function parses both named and abstract declarators. Note the old
+        K&R style function definitions are not supported, as indicated by the
+        'NOT SUPPORTED' tag next to the relevant line in the above grammar.
 
         :param t: The tokens list to parse the declarator from.
         """
@@ -419,7 +421,31 @@ class DeclaratorFunctionPart:
 
     def parse(self, t: Tokens):
         """
-        Parse a function declarator part from a tokens list.
+        Parse a function declarator part from a tokens list. The relevant
+        grammar is:
+
+          direct_declarator
+            : ...
+            | direct_declarator '(' parameter_types ')'
+            | direct_declarator '(' identifiers ')'      NOT SUPPORTED
+            | direct_declarator '(' ')'
+
+          parameter_types
+            : parameter_list ',' '...'
+            | parameter_list
+
+          parameter_list
+            : parameter_declaration
+            | parameter_list ',' parameter_declaration
+
+          parameter_declaration
+            : declaration_specifiers declarator
+            | declaration_specifiers abstract_declarator
+            | declaration_specifiers
+
+        Note we don't support the old K&R style function definitions, as
+        indicated by the 'NOT SUPPORTED' tag next to the relevant line in the
+        above grammar.
 
         :param t: The tokens list to parse the declarator part from.
         """
@@ -434,17 +460,7 @@ class DeclaratorFunctionPart:
         # Parse a list of argument declarations
         while t.cur().type != Token.CLOSE_PAREN:
             arg = DeclaratorFunctionArgument()
-
-            # Parse a set of declaration specifiers
-            arg.specifiers = DeclarationSpecifiers()
-            arg.specifiers.parse(t)
-
-            # Parse an optional declarator
-            if t.cur().type != Token.CLOSE_PAREN and t.cur().type != Token.COMMA:
-                arg.declarator = Declarator()
-                arg.declarator.parse(t)
-
-            # Add the argument
+            arg.parse(t)
             self.args.append(arg)
 
             # Parse a comma
@@ -470,6 +486,21 @@ class DeclaratorFunctionArgument:
         self.specifiers = None
         self.declarator = None
 
+    def parse(self, t: Tokens):
+        """
+        Parse an argument in a function declaration.
+
+        :param t: The tokens list to parse the argument from.
+        """
+        # Parse a set of declaration specifiers
+        self.specifiers = DeclarationSpecifiers()
+        self.specifiers.parse(t)
+
+        # Parse an optional declarator
+        if t.cur().type != Token.CLOSE_PAREN and t.cur().type != Token.COMMA:
+            self.declarator = Declarator()
+            self.declarator.parse(t)
+
 
 class DeclaratorPointerPart:
     """
@@ -485,7 +516,31 @@ class DeclaratorPointerPart:
 
     def parse(self, t: Tokens):
         """
-        Parse a pointer declarator part from a tokens list.
+        Parse a pointer declarator part from a tokens list. The relevant
+        grammar is:
+
+          direct_declarator
+            : ...
+            | direct_declarator '[' ']'
+            | direct_declarator '[' type_qualifiers ']'
+            | direct_declarator '[' '*' ']'
+            | direct_declarator '[' type_qualifiers '*' ']'
+            | direct_declarator '[' expression ']'
+            | direct_declarator '[' type_qualifiers expression ']'
+            | direct_declarator '[' STATIC expression ']'
+            | direct_declarator '[' STATIC type_qualifiers expression ']'
+            | direct_declarator '[' type_qualifiers STATIC expression ']'
+            | ...
+
+          type_qualifiers
+            : type_qualifier
+            | type_qualifiers type_qualifier
+
+        You can find information on using 'static' and type qualifiers in array
+        declarators here:
+
+          https://stackoverflow.com/questions/17559631/what-are-those-strange-
+          array-sizes-and-static-in-c99
 
         :param t: The tokens list to parse the declarator part from.
         """

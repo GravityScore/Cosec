@@ -6,7 +6,7 @@
 
 class Token:
     """
-    A token is the smallest building block of the C language, like a comma,
+    A token is the smallest building block of the language, like a comma,
     semicolon, number, or identifier.
     """
 
@@ -113,7 +113,7 @@ class Token:
         """
         Create a new token with values initialised to some meaningless defaults.
 
-        :param type: The token's type.
+        :param type: The token's type, equal to one of the strings above.
         """
         self.type = type
         self.file = ""  # Initialise with some default values
@@ -142,7 +142,7 @@ class Token:
 
 class IntSuffix:
     """
-    All possible suffixes for an integer (in lowercase).
+    All possible suffixes for an integer.
     """
     LONG = "long"
     LLONG = "long long"
@@ -153,7 +153,7 @@ class IntSuffix:
 
 class FloatSuffix:
     """
-    All possible suffixes for a floating point number (in lowercase).
+    All possible suffixes for a floating point number.
     """
     FLOAT = "float"
     LDOUBLE = "long double"

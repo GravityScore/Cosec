@@ -75,7 +75,9 @@ class Tokens:
         :param expected: The expected token type.
         """
         if self.cur().type != expected:
-            desc = f"expected '{expected}', got '{self.cur().contents}'"
+            expected_str = TOKEN_NAMES[expected]
+            found_str = TOKEN_NAMES[self.cur().type]
+            desc = f"expected {expected_str}, found {found_str}"
             raise Error(desc, self.cur())
 
     def save(self) -> int:
@@ -499,17 +501,21 @@ class Scanner:
         self.column_num = 1
 
         # Find the end of the current line
-        end = min(self.source.find("\n", self.cursor),
-                  self.source.find("\r", self.cursor))
-
-        # This happens if the cursor is on the last line in the file
-        if end == -1:
+        n_end = self.source.find("\n", self.cursor)
+        r_end = self.source.find("\r", self.cursor)
+        if n_end >= 0 and r_end >= 0:
+            end = min(n_end, r_end)
+        elif n_end >= 0:
+            end = n_end
+        elif r_end >= 0:
+            end = r_end
+        else:
             # Add 1 to the source code length, because we subtract 1 below to
             # exclude the newline character
             end = len(self.source) + 1
 
         # Subtract 1 to exclude the newline character
-        self.line = self.slice(end).rstrip()
+        self.line = self.slice(end - self.cursor).rstrip()
 
     def consume(self, amount: int):
         """
@@ -862,3 +868,17 @@ INT_SUFFIXES = {
     "llu": IntSuffix.ULLONG, "llU": IntSuffix.ULLONG,
     "LLu": IntSuffix.ULLONG, "LLU": IntSuffix.ULLONG,
 }
+
+
+"""
+A mapping between token type and its printable name.
+"""
+TOKEN_NAMES = {x: "'" + x.value + "'" for x in Tk}
+TOKEN_NAMES[Tk.IDENT] = "identifier"
+TOKEN_NAMES[Tk.IDENT] = "identifier"
+TOKEN_NAMES[Tk.CONST_INT] = "number"
+TOKEN_NAMES[Tk.CONST_FLOAT] = "number"
+TOKEN_NAMES[Tk.CONST_CHAR] = "character"
+TOKEN_NAMES[Tk.CONST_STR] = "string"
+TOKEN_NAMES[Tk.COMBINED] = "<combined>"
+TOKEN_NAMES[Tk.EOF] = "end of file"

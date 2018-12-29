@@ -8,20 +8,14 @@ from typing import Optional
 from enum import Enum
 
 from lexer import Tokens, Token, Tk
-from error import Error, Warning
+from error import Error
 
 
 class Node:
     """
     The base class for any AST node.
     """
-
-    def __init__(self):
-        """
-        Every AST node has an associated token range, for use when printing
-        errors.
-        """
-        self.range = None
+    pass
 
 
 # ******************************************************************************
@@ -181,8 +175,7 @@ class DeclaratorPointerPart(Node):
 
 class Expression(Node):
     """
-    This is the base class for an expression tree node, which forms one part
-    of an expression.
+    This is the base class for any component of an expression.
     """
     pass
 
@@ -404,6 +397,195 @@ class UnaryOperator(Enum):
 
 
 # ******************************************************************************
+#     Statements
+# ******************************************************************************
+
+
+class FunctionDefinition(Node):
+    """
+    A function definition contains a set of declaration specifiers and a
+    declarator that tell us the function signature and name of the function,
+    and a block of statements.
+    """
+
+    def __init__(self, specifiers, declarator, block):
+        super().__init__()
+        self.specifiers = specifiers
+        self.declarator = declarator
+        self.block = block
+
+
+class Statement(Node):
+    """
+    Base class for a statement.
+    """
+    pass
+
+
+class DeclarationStatement(Statement):
+    """
+    A declaration statement contains a single declaration (including declaration
+    specifiers, declarator, and optional initializer).
+    """
+
+    def __init__(self, declaration):
+        super().__init__()
+        self.declaration = declaration
+
+
+class ExpressionStatement(Statement):
+    """
+    An expression statement contains an expression (e.g. an assignment or
+    function call). This is only useful if the expression has side effects,
+    otherwise the result is unused.
+    """
+
+    def __init__(self, expression):
+        super().__init__()
+        self.expression = expression
+
+
+class IfStatementChain(Statement):
+    """
+    An if statement chain stores a list of if statements that represent an
+    initial if, followed optionally by a list of else statements, followed by
+    an optional else statement.
+    """
+
+    def __init__(self, chain):
+        super().__init__()
+        self.chain = chain
+
+
+class IfStatement(Statement):
+    """
+    An if statement conditionally executes a block based on the result of an
+    expression.
+
+    The condition is None for an else statement.
+    """
+
+    def __init__(self, condition, block):
+        super().__init__()
+        self.condition = condition
+        self.block = block
+
+
+class SwitchStatement(Statement):
+    """
+    A switch statement jumps to a case or default statement contained in its
+    block based on a condition.
+    """
+
+    def __init__(self, condition, block):
+        super().__init__()
+        self.condition = condition
+        self.block = block
+
+
+class CaseStatement(Statement):
+    """
+    A case statement can only occur inside the block that follows a switch
+    statement.
+    """
+
+    def __init__(self, condition):
+        super().__init__()
+        self.condition = condition
+
+
+class DefaultStatement(Statement):
+    """
+    A default statement can only occur inside the block that follows a switch
+    statement.
+    """
+    pass
+
+
+class WhileStatement(Statement):
+    """
+    A while statement repeats its block as long as the condition is true.
+    """
+
+    def __init__(self, condition, block):
+        super().__init__()
+        self.condition = condition
+        self.block = block
+
+
+class DoWhileStatement(Statement):
+    """
+    A do while statement repeats its block as long as the condition is true,
+    executing its block at least once.
+    """
+
+    def __init__(self, condition, block):
+        super().__init__()
+        self.condition = condition
+        self.block = block
+
+
+class ForStatement(Statement):
+    """
+    A for statement includes an initializer, condition, and increment
+    expression, and a block. The initializer can be either a declaration or
+    expression.
+    """
+
+    def __init__(self, initializer, condition, increment, block):
+        super().__init__()
+        self.initializer = initializer
+        self.condition = condition
+        self.increment = increment
+        self.block = block
+
+
+class ContinueStatement(Statement):
+    """
+    A continue statement jumps back to the start of the loop its contained in.
+    """
+    pass
+
+
+class BreakStatement(Statement):
+    """
+    A break statement jumps to after the loop its contained in.
+    """
+    pass
+
+
+class ReturnStatement(Statement):
+    """
+    A return statement breaks out of the function its contained in, optionally
+    with an expression.
+    """
+
+    def __init__(self, result):
+        super().__init__()
+        self.result = result
+
+
+class GotoStatement(Statement):
+    """
+    A goto statement jumps to a label within the same function.
+    """
+
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+
+
+class LabelStatement(Statement):
+    """
+    A label statement specifies a point that a goto statement can jump to.
+    """
+
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+
+
+# ******************************************************************************
 #     Parser
 # ******************************************************************************
 
@@ -420,6 +602,95 @@ class Parser:
         :param tokens: The tokens list to construct an AST from.
         """
         self.t = tokens
+
+    def gen(self) -> list:
+        """
+        Generate the AST. The entry point for the grammar is:
+
+          start
+            : external_declaration
+            | start external_declaration
+
+        :return: A list of root AST nodes.
+        """
+        nodes = []
+        while self.t.cur().type != Tk.EOF:
+            self.parse_root_node(nodes)
+        return nodes
+
+    def parse_root_node(self, nodes: list):
+        """
+        Parse a root AST node, which occurs at the top level of the source code.
+        This is either a function definition or declaration.
+
+          external_declaration
+            : function_definition
+            | declaration
+
+          function_definition
+            : declaration_specifiers declarator declaration_list
+                compound_statement                                NOT SUPPORTED
+            | declaration_specifiers declarator compound_statement
+
+        Note we don't support the old K&R style of function definitions,
+        indicated by the 'NOT SUPPORTED' tag next to the relevant line in the
+        above grammar.
+
+        :param nodes: A list of root nodes to append to.
+        """
+        # Both function definitions and declarations start with a set of
+        # declaration specifiers
+        specifiers = self.parse_declaration_specifiers()
+
+        # Parse a declarator
+        declarator = self.parse_declarator()
+
+        # If the next character is an open brace, then we've got a function
+        # definition
+        if self.t.cur().type == Tk.OPEN_BRACE:
+            # Skip the open brace
+            self.t.next()
+
+            # Parse a block of statement
+            block = self.parse_block()
+
+            # Expect a closing brace
+            self.t.expect(Tk.CLOSE_BRACE)
+            self.t.next()
+
+            # Construct a function definition
+            definition = FunctionDefinition(specifiers, declarator, block)
+            nodes.append(definition)
+        else:
+            # We've got a declaration; check for an optional initializer
+            initializer = None
+            if self.t.cur().type == Tk.ASSIGN:
+                self.t.next()
+                initializer = self.parse_expression_root()
+
+            # Construct a declaration
+            declaration = Declaration(specifiers, declarator, initializer)
+            nodes.append(declaration)
+
+            # Check for another declaration
+            while self.t.cur().type == Tk.COMMA:
+                # Skip the comma
+                self.t.next()
+
+                # Parse a declarator and optional initializer
+                declarator = self.parse_declarator()
+                initializer = None
+                if self.t.cur().type == Tk.ASSIGN:
+                    self.t.next()
+                    initializer = self.parse_expression_root()
+
+                # Construct another declaration
+                declaration = Declaration(specifiers, declarator, initializer)
+                nodes.append(declaration)
+
+            # Expect a semicolon
+            self.t.expect(Tk.SEMICOLON)
+            self.t.next()
 
     # **************************************************************************
     #     Declaration Parsing
@@ -441,6 +712,28 @@ class Parser:
             : declarator '=' initializer
             | declarator
 
+          initializer
+            : '{' initializer_list '}'
+            | '{' initializer_list ',' '}'
+            | assignment_expression
+
+          initializer_list
+            : designation initializer
+            | initializer
+            | initializer_list ',' designation initializer
+            | initializer_list ',' initializer
+
+          designation
+            : designator_list '='
+
+          designator_list
+            : designator
+            | designator_list designator
+
+          designator
+            : '[' constant_expression ']'
+            | '.' IDENTIFIER
+
         :return: An array of declarations.
         """
         # Parse a set of declaration specifiers
@@ -450,8 +743,6 @@ class Parser:
         declarations = []
         while self.t.cur().type != Tk.EOF and \
                 self.t.cur().type != Tk.SEMICOLON:
-            start = self.t.cur()
-
             # Parse a declarator
             declarator = self.parse_declarator()
 
@@ -463,7 +754,6 @@ class Parser:
 
             # Add a declaration
             declaration = Declaration(specifiers, declarator, initializer)
-            declaration.range = start.combine(self.t.prev())
             declarations.append(declaration)
 
             # Check for a comma
@@ -475,12 +765,6 @@ class Parser:
         # Expect a semicolon
         self.t.expect(Tk.SEMICOLON)
         self.t.next()
-
-        # Emit a warning if we don't have any declarators (the statement is
-        # useless)
-        if len(declarations) == 0:
-            err = Warning("useless declaration", specifiers.range)
-            err.print()
         return declarations
 
     def parse_type(self) -> TypeName:
@@ -558,13 +842,11 @@ class Parser:
 
         :return: The set of declaration specifiers.
         """
-        start = self.t.cur()
-        specifiers = DeclarationSpecifiers()
-
         # Keep track of which type names we've seen
         type_names = []
 
         # Keep parsing tokens until we reach one that isn't valid
+        specifiers = DeclarationSpecifiers()
         while self.t.cur().type != Tk.EOF:
             type = self.t.cur().type
             if type in STORAGE_CLASSES:
@@ -586,7 +868,7 @@ class Parser:
 
                 # Check we could find a matching type specifier
                 if type_specifier is None:
-                    raise Error("unknown type", self.t.cur())
+                    raise Error("cannot combine type", self.t.cur())
                 specifiers.type_specifier = type_specifier
             elif type in TYPE_QUALIFIERS:
                 # Add another type qualifier
@@ -603,8 +885,6 @@ class Parser:
         # Check we actually parsed anything at all
         if specifiers.type_specifier is None:
             raise Error("expected type", self.t.cur())
-
-        specifiers.range = start.combine(self.t.prev())
         return specifiers
 
     def parse_declarator(self) -> Declarator:
@@ -645,12 +925,9 @@ class Parser:
         K&R style function definitions are not supported, as indicated by the
         'NOT SUPPORTED' tag next to the relevant line in the above grammar.
         """
-        start = self.t.cur()
-
         # Parse a declarator recursively
         declarator = Declarator()
         self.parse_declarator_recursive(declarator)
-        declarator.range = start.combine(self.t.cur())
 
         # Check we actually parsed something
         if len(declarator.parts) == 0 and declarator.name is None:
@@ -814,7 +1091,6 @@ class Parser:
         :return: An array declarator part.
         """
         array = DeclaratorArrayPart()
-        start = self.t.cur()
 
         # Expect an opening bracket
         self.t.expect(Tk.OPEN_BRACKET)
@@ -848,7 +1124,6 @@ class Parser:
         # Expect a closing bracket
         self.t.expect(Tk.CLOSE_BRACKET)
         self.t.next()
-        array.range = start.combine(self.t.prev())
         return array
 
     # **************************************************************************
@@ -1196,6 +1471,87 @@ class Parser:
             # Expected expression error
             raise Error("expected expression", self.t.cur())
         return result
+
+    # **************************************************************************
+    #     Statement Parsing
+    # **************************************************************************
+
+    def parse_block(self) -> list:
+        """
+        Parse a list of statements, one after the other. The relevant grammar
+        is:
+
+          compound_statement
+            : '{' '}'
+            | '{'  block_item_list '}'
+
+          block_item_list
+            : block_item
+            | block_item_list block_item
+
+        :return: A list of statements.
+        """
+        statements = []
+        while self.t.cur().type != Tk.EOF and \
+                self.t.cur().type != Tk.CLOSE_BRACE:
+            statement = self.parse_statement()
+            statements.append(statement)
+        return statements
+
+    def parse_statement(self) -> Statement:
+        """
+        Parse a single statement (called a 'block_item' in the grammar). The
+        relevant grammar is:
+
+          block_item
+            : declaration
+            | statement
+
+          statement
+            : labeled_statement
+            | compound_statement
+            | expression_statement
+            | selection_statement
+            | iteration_statement
+            | jump_statement
+
+          labeled_statement
+            : IDENTIFIER ':' statement
+            | CASE constant_expression ':' statement
+            | DEFAULT ':' statement
+
+          expression_statement
+            : ';'
+            | expression ';'
+
+          selection_statement
+            : IF '(' expression ')' statement ELSE statement
+            | IF '(' expression ')' statement
+            | SWITCH '(' expression ')' statement
+
+          iteration_statement
+            : WHILE '(' expression ')' statement
+            | DO statement WHILE '(' expression ')' ';'
+            | FOR '(' expression_statement expression_statement ')' statement
+            | FOR '(' expression_statement expression_statement expression ')'
+                statement
+            | FOR '(' declaration expression_statement ')' statement
+            | FOR '(' declaration expression_statement expression ')' statement
+
+          jump_statement
+            : GOTO IDENTIFIER ';'
+            | CONTINUE ';'
+            | BREAK ';'
+            | RETURN ';'
+            | RETURN expression ';'
+
+        :return: A statement object.
+        """
+        # Just parse an expression statement for now
+        expression = self.parse_expression()
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return ExpressionStatement(expression)
 
 
 """

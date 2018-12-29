@@ -74,7 +74,7 @@ class Error(Exception):
         assert(self.column_num is not None)
         self.length = length
 
-    def print(self):
+    def pretty_print(self):
         """
         Pretty prints the error to the standard error output, using colors
         and proper formatting.
@@ -117,7 +117,7 @@ class Error(Exception):
 
         # Arrow. We need to account for the number of tabs we've replaced before
         # the start of the arrow
-        if self.length is None or self.length <= 0:
+        if self.length is None or self.length < 0:
             return
         num_tabs = self.line.count("\t", 0, self.column_num - 1)
         padding = self.column_num - 1 + num_tabs * (spaces_per_tab - 1)

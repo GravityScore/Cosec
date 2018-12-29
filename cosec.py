@@ -39,7 +39,7 @@ def main():
             process_files(args["files"], args["output"])
     except Error as err:
         # Pretty print all compiler errors to the standard output
-        err.print()
+        err.pretty_print()
         return 1
     return 0
 
@@ -168,7 +168,7 @@ def compile(src_file, asm_file):
 
     # Tokens -> AST
     parser = Parser(tokens)
-    roots = parser.gen()
+    ast = parser.gen()
 
     # # AST -> IR
     # ir = IrGenerator(ast_root)

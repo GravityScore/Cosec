@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Optional
 from enum import Enum
 
-from lexer import Tokens, Token
+from lexer import Tokens, Token, Tk
 from error import Error, Warning
 
 
@@ -43,7 +43,7 @@ class Declaration(Node):
         self.initializer = initializer
 
 
-class Type(Node):
+class TypeName(Node):
     """
     A type consists of a set of declaration specifiers and a declarator. Only
     in certain cases does this declarator have to be abstract.
@@ -77,11 +77,11 @@ class StorageClass(Enum):
     All storage classes that can occur in a set of declaration specifiers. These
     are only legal in a root declaration at the top level of a source code file.
     """
-    TYPEDEF = Token.TYPEDEF
-    EXTERN = Token.EXTERN
-    STATIC = Token.STATIC
-    AUTO = Token.AUTO
-    REGISTER = Token.REGISTER
+    TYPEDEF = Tk.TYPEDEF
+    EXTERN = Tk.EXTERN
+    STATIC = Tk.STATIC
+    AUTO = Tk.AUTO
+    REGISTER = Tk.REGISTER
 
 
 class TypeSpecifier(Enum):
@@ -111,9 +111,9 @@ class TypeQualifier(Enum):
     """
     All type qualifiers that can occur in a set of declaration specifiers.
     """
-    CONST = Token.CONST
-    RESTRICT = Token.RESTRICT
-    VOLATILE = Token.VOLTATILE
+    CONST = Tk.CONST
+    RESTRICT = Tk.RESTRICT
+    VOLATILE = Tk.VOLATILE
 
 
 class FunctionSpecifier(Enum):
@@ -122,7 +122,7 @@ class FunctionSpecifier(Enum):
     These are only legal in function declarations and definitions at the top
     level of a source code file.
     """
-    INLINE = Token.INLINE
+    INLINE = Tk.INLINE
 
 
 class Declarator(Node):
@@ -193,9 +193,9 @@ class ExpressionList(Expression):
     by commas. This object keeps a list of these subexpressions.
     """
 
-    def __init__(self):
+    def __init__(self, roots):
         super().__init__()
-        self.roots = []
+        self.roots = roots
 
 
 class TernaryExpression(Expression):
@@ -229,7 +229,7 @@ class CastExpression(Expression):
     A cast expression explicitly changes the type of its operand.
     """
 
-    def __init__(self, type: Type, operand: Expression):
+    def __init__(self, type: TypeName, operand: Expression):
         super().__init__()
         self.type = type
         self.operand = operand
@@ -246,7 +246,7 @@ class SizeofExpression(Expression):
     node.
     """
 
-    def __init__(self, type: Type):
+    def __init__(self, type: TypeName):
         super().__init__()
         self.type = type
 
@@ -356,51 +356,51 @@ class BinaryOperator(Enum):
     """
     A list of all binary operators, and their corresponding tokens.
     """
-    ASSIGN = Token.ASSIGN
-    ADD_ASSIGN = Token.ADD_ASSIGN
-    SUB_ASSIGN = Token.SUB_ASSIGN
-    MUL_ASSIGN = Token.MUL_ASSIGN
-    DIV_ASSIGN = Token.DIV_ASSIGN
-    MOD_ASSIGN = Token.MOD_ASSIGN
-    LSHIFT_ASSIGN = Token.LSHIFT_ASSIGN
-    RSHIFT_ASSIGN = Token.RSHIFT_ASSIGN
-    AND_ASSIGN = Token.AND_ASSIGN
-    OR_ASSIGN = Token.OR_ASSIGN
-    XOR_ASSIGN = Token.XOR_ASSIGN
-    TERNARY = Token.TERNARY
-    LOGICAL_OR = Token.LOGICAL_OR
-    LOGICAL_AND = Token.LOGICAL_AND
-    BITWISE_OR = Token.BITWISE_OR
-    BITWISE_XOR = Token.BITWISE_XOR
-    BITWISE_AND = Token.BITWISE_AND
-    EQ = Token.EQ
-    NEQ = Token.NEQ
-    LT = Token.LT
-    GT = Token.GT
-    LE = Token.LE
-    GE = Token.GE
-    LSHIFT = Token.LSHIFT
-    RSHIFT = Token.RSHIFT
-    ADD = Token.ADD
-    SUB = Token.SUB
-    MUL = Token.MUL
-    DIV = Token.DIV
-    MOD = Token.MOD
+    ASSIGN = Tk.ASSIGN
+    ADD_ASSIGN = Tk.ADD_ASSIGN
+    SUB_ASSIGN = Tk.SUB_ASSIGN
+    MUL_ASSIGN = Tk.MUL_ASSIGN
+    DIV_ASSIGN = Tk.DIV_ASSIGN
+    MOD_ASSIGN = Tk.MOD_ASSIGN
+    LSHIFT_ASSIGN = Tk.LSHIFT_ASSIGN
+    RSHIFT_ASSIGN = Tk.RSHIFT_ASSIGN
+    AND_ASSIGN = Tk.AND_ASSIGN
+    OR_ASSIGN = Tk.OR_ASSIGN
+    XOR_ASSIGN = Tk.XOR_ASSIGN
+    TERNARY = Tk.TERNARY
+    LOGICAL_OR = Tk.LOGICAL_OR
+    LOGICAL_AND = Tk.LOGICAL_AND
+    BITWISE_OR = Tk.BITWISE_OR
+    BITWISE_XOR = Tk.BITWISE_XOR
+    BITWISE_AND = Tk.BITWISE_AND
+    EQ = Tk.EQ
+    NEQ = Tk.NEQ
+    LT = Tk.LT
+    GT = Tk.GT
+    LE = Tk.LE
+    GE = Tk.GE
+    LSHIFT = Tk.LSHIFT
+    RSHIFT = Tk.RSHIFT
+    ADD = Tk.ADD
+    SUB = Tk.SUB
+    MUL = Tk.MUL
+    DIV = Tk.DIV
+    MOD = Tk.MOD
 
 
 class UnaryOperator(Enum):
     """
     A list of all possible unary operators, and their corresponding tokens.
     """
-    DEREF = Token.MUL
-    ADDR = Token.BITWISE_AND
-    ADD = Token.ADD
-    NEG = Token.SUB
-    BITWISE_NOT = Token.BITWISE_NOT
-    LOGICAL_NOT = Token.LOGICAL_NOT
-    INC = Token.INC
-    DEC = Token.DEC
-    SIZEOF = Token.SIZEOF
+    DEREF = Tk.MUL
+    ADDR = Tk.BITWISE_AND
+    ADD = Tk.ADD
+    NEG = Tk.SUB
+    BITWISE_NOT = Tk.BITWISE_NOT
+    LOGICAL_NOT = Tk.LOGICAL_NOT
+    INC = Tk.INC
+    DEC = Tk.DEC
+    SIZEOF = Tk.SIZEOF
 
 
 # ******************************************************************************
@@ -448,8 +448,8 @@ class Parser:
 
         # Parse a list of declarators and initializers
         declarations = []
-        while self.t.cur().type != Token.EOF and \
-                self.t.cur().type != Token.SEMICOLON:
+        while self.t.cur().type != Tk.EOF and \
+                self.t.cur().type != Tk.SEMICOLON:
             start = self.t.cur()
 
             # Parse a declarator
@@ -457,9 +457,9 @@ class Parser:
 
             # Check for an optional initializer
             initializer = None
-            if self.t.cur().type == Token.ASSIGN:
+            if self.t.cur().type == Tk.ASSIGN:
                 self.t.next()
-                # initializer = self.parse_expression()
+                initializer = self.parse_expression()
 
             # Add a declaration
             declaration = Declaration(specifiers, declarator, initializer)
@@ -467,13 +467,13 @@ class Parser:
             declarations.append(declaration)
 
             # Check for a comma
-            if self.t.cur().type == Token.COMMA:
+            if self.t.cur().type == Tk.COMMA:
                 self.t.next()
             else:
                 break
 
         # Expect a semicolon
-        self.t.expect(Token.SEMICOLON)
+        self.t.expect(Tk.SEMICOLON)
         self.t.next()
 
         # Emit a warning if we don't have any declarators (the statement is
@@ -483,7 +483,7 @@ class Parser:
             err.print()
         return declarations
 
-    def parse_type(self) -> Type:
+    def parse_type(self) -> TypeName:
         """
         Parse a type name, consisting of a set of declaration specifiers
         followed by an optional abstract declarator.
@@ -492,28 +492,29 @@ class Parser:
         """
         # Parse a set of declaration specifiers
         specifiers = self.parse_declaration_specifiers()
-        type = Type(specifiers)
+        type = TypeName(specifiers)
 
         # Parse an optional declarator
-        if self.t.cur().type != Token.CLOSE_PAREN and \
-                self.t.cur().type != Token.COMMA:
+        if self.t.cur().type != Tk.CLOSE_PAREN and \
+                self.t.cur().type != Tk.COMMA:
             type.declarator = self.parse_declarator()
         return type
 
-    def try_parse_type(self) -> Optional[Type]:
+    def try_parse_type(self) -> Optional[TypeName]:
         """
         Try parse a type surrounded in parentheses. If no valid type exists,
         then return None.
 
         :return: A type, or None.
         """
+        saved = self.t.save()
+
         # Check for an opening parenthesis
-        if self.t.cur().type != Token.OPEN_PAREN:
+        if self.t.cur().type != Tk.OPEN_PAREN:
             return None
         self.t.next()
 
         # Try parsing a type
-        saved = self.t.save()
         try:
             type = self.parse_type()
         except Error:
@@ -522,7 +523,7 @@ class Parser:
 
         # If we found a type, expect a closing parenthesis
         if type is not None:
-            self.t.expect(Token.CLOSE_PAREN)
+            self.t.expect(Tk.CLOSE_PAREN)
             self.t.next()
         return type
 
@@ -564,21 +565,22 @@ class Parser:
         type_names = []
 
         # Keep parsing tokens until we reach one that isn't valid
-        while self.t.cur().type != Token.EOF:
+        while self.t.cur().type != Tk.EOF:
             type = self.t.cur().type
             if type in STORAGE_CLASSES:
                 # Check we haven't already got a storage class
                 if specifiers.storage_class is not None:
                     raise Error(f"can't have two storage classes", self.t.cur())
-                specifiers.storage_class = type
-            elif type in BUILT_IN_TYPE_NAMES:
+                specifiers.storage_class = StorageClass(type)
+            elif type in BUILT_IN_TYPE_TOKENS:
                 # Collect the type name
                 type_names.append(type)
 
                 # Try match the accumulated type names to a built in type
                 type_specifier = None
-                for (candidate, specifications) in BUILT_IN_TYPES.items():
-                    if sorted(type_names) in specifications:
+                for (candidate, options) in BUILT_IN_TYPES.items():
+                    # Convert all the tokens to strings
+                    if sorted(type_names, key=lambda x: x.value) in options:
                         type_specifier = candidate
                         break
 
@@ -588,10 +590,12 @@ class Parser:
                 specifiers.type_specifier = type_specifier
             elif type in TYPE_QUALIFIERS:
                 # Add another type qualifier
-                specifiers.type_qualifiers.add(self.t.cur().type)
+                qualifier = TypeQualifier(type)
+                specifiers.type_qualifiers.add(qualifier)
             elif type in FUNCTION_SPECIFIERS:
                 # Add another function specifier
-                specifiers.function_specifiers.add(type)
+                specifier = FunctionSpecifier(type)
+                specifiers.function_specifiers.add(specifier)
             else:
                 break
             self.t.next()
@@ -660,31 +664,31 @@ class Parser:
         """
         # Parse a list of pointer parts
         pointers = []
-        while self.t.cur().type == Token.MUL:
+        while self.t.cur().type == Tk.MUL:
             pointer_part = self.parse_declarator_pointer_part()
             pointers.append(pointer_part)
 
         # Either an identifier or an open parenthesis can follow the pointer
         # parts
-        if self.t.cur().type == Token.OPEN_PAREN:
+        if self.t.cur().type == Tk.OPEN_PAREN:
             # Parse another declarator part recursively
             self.t.next()
             self.parse_declarator_recursive(declarator)
 
             # Expect a closing parenthesis
-            self.t.expect(Token.CLOSE_PAREN)
+            self.t.expect(Tk.CLOSE_PAREN)
             self.t.next()
-        elif self.t.cur().type == Token.IDENT:
+        elif self.t.cur().type == Tk.IDENT:
             # Found the symbol name that the declarator is declaring
             declarator.name = self.t.cur()
             self.t.next()
 
         # Parse a list of postfix array or function parts
         while True:
-            if self.t.cur().type == Token.OPEN_PAREN:
+            if self.t.cur().type == Tk.OPEN_PAREN:
                 function_part = self.parse_declarator_function_part()
                 declarator.parts.append(function_part)
-            elif self.t.cur().type == Token.OPEN_BRACKET:
+            elif self.t.cur().type == Tk.OPEN_BRACKET:
                 array_part = self.parse_declarator_array_part()
                 declarator.parts.append(array_part)
             else:
@@ -718,13 +722,14 @@ class Parser:
         :return: A pointer declarator part.
         """
         # Expect an asterisk
-        self.t.expect(Token.MUL)
+        self.t.expect(Tk.MUL)
         self.t.next()
 
         # Parse a list of type qualifiers
         pointer = DeclaratorPointerPart()
         while self.t.cur().type in TYPE_QUALIFIERS:
-            pointer.type_qualifiers.add(self.t.cur().type)
+            qualifier = TypeQualifier(self.t.cur().type)
+            pointer.type_qualifiers.add(qualifier)
             self.t.next()
         return pointer
 
@@ -759,29 +764,29 @@ class Parser:
         :return: A function declarator part.
         """
         # Expect an opening parenthesis
-        self.t.expect(Token.OPEN_PAREN)
+        self.t.expect(Tk.OPEN_PAREN)
         self.t.next()
 
         # No arguments if the only thing in the parentheses is 'void'
-        if self.t.cur().type == Token.VOID and \
-                self.t.peek(1).type == Token.CLOSE_PAREN:
+        if self.t.cur().type == Tk.VOID and \
+                self.t.peek(1).type == Tk.CLOSE_PAREN:
             self.t.next()  # Skip 'void' and stop on the close parenthesis
 
         # Parse a list of argument declarations
         function = DeclaratorFunctionPart()
-        while self.t.cur().type != Token.EOF and \
-                self.t.cur().type != Token.CLOSE_PAREN:
+        while self.t.cur().type != Tk.EOF and \
+                self.t.cur().type != Tk.CLOSE_PAREN:
             arg = self.parse_type()
             function.args.append(arg)
 
             # Parse a comma
-            if self.t.cur().type == Token.COMMA:
+            if self.t.cur().type == Tk.COMMA:
                 self.t.next()
             else:
                 break
 
         # Expect a close parenthesis
-        self.t.expect(Token.CLOSE_PAREN)
+        self.t.expect(Tk.CLOSE_PAREN)
         self.t.next()
         return function
 
@@ -812,35 +817,36 @@ class Parser:
         start = self.t.cur()
 
         # Expect an opening bracket
-        self.t.expect(Token.OPEN_BRACKET)
+        self.t.expect(Tk.OPEN_BRACKET)
         self.t.next()
 
         # Check for static
-        if self.t.cur().type == Token.STATIC:
+        if self.t.cur().type == Tk.STATIC:
             array.is_static = True
             self.t.next()
 
         # Check for type qualifiers
         while self.t.cur().type in TYPE_QUALIFIERS:
-            array.type_qualifiers.add(self.t.cur().type)
+            qualifier = TypeQualifier(self.t.cur().type)
+            array.type_qualifiers.add(qualifier)
             self.t.next()
 
         # Check for static again
-        if self.t.cur().type == Token.STATIC:
+        if self.t.cur().type == Tk.STATIC:
             array.is_static = True
             self.t.next()
 
         # Check for a variable length array, or parse an expression
-        if self.t.cur().type == Token.MUL and \
-                self.t.peek(1).type == Token.CLOSE_BRACKET:
+        if self.t.cur().type == Tk.MUL and \
+                self.t.peek(1).type == Tk.CLOSE_BRACKET:
             array.is_vla = True
             self.t.next()  # The close bracket is consumed below
-        elif self.t.cur().type != Token.CLOSE_BRACKET:
-            # array.size = self.parse_expression()
+        elif self.t.cur().type != Tk.CLOSE_BRACKET:
+            array.size = self.parse_expression()
             pass
 
         # Expect a closing bracket
-        self.t.expect(Token.CLOSE_BRACKET)
+        self.t.expect(Tk.CLOSE_BRACKET)
         self.t.next()
         array.range = start.combine(self.t.prev())
         return array
@@ -849,7 +855,7 @@ class Parser:
     #     Expression Parsing
     # **************************************************************************
 
-    def parse_expression(self) -> ExpressionList:
+    def parse_expression(self) -> Expression:
         """
         Parse an expression from a list of tokens. The relevant grammar is:
 
@@ -860,24 +866,38 @@ class Parser:
         :return: An expression list.
         """
         # Parse expressions separated by commas
-        expr_list = ExpressionList()
+        expressions = []
         while True:
-            root = self.parse_expression_root(Precedence.NONE)
-            expr_list.roots.append(root)
+            root = self.parse_expression_root()
+            expressions.append(root)
 
             # Check for a comma
-            if self.t.cur().type == Token.COMMA:
+            if self.t.cur().type == Tk.COMMA:
                 self.t.next()
             else:
                 break
-        return expr_list
 
-    def parse_expression_root(self, min_precedence: Precedence) -> Expression:
+        # Return the expression directly if there's only one of them
+        if len(expressions) == 1:
+            return expressions[0]
+        else:
+            return ExpressionList(expressions)
+
+    def parse_expression_root(self) -> Expression:
+        """
+        Parse a single expression root (an 'assignment_expression' in the
+        grammar).
+
+        :return: The root node of an expression tree.
+        """
+        return self.parse_expression_recursive(Precedence.NONE)
+
+    def parse_expression_recursive(self, min_prec: Precedence) -> Expression:
         """
         Parse binary operations as long as the operator has a precedence greater
         than the minimum.
 
-        :param min_precedence: The minimum precedence for binary operators.
+        :param min_prec: The minimum precedence for binary operators.
         :return:               An expression tree.
         """
         # Parse the left operand
@@ -885,25 +905,30 @@ class Parser:
 
         # Keep parsing binary operators while their precedence is greater than
         # the minimum
-        while self.t.cur().type in BINARY_OPERATORS:
+        while self.t.cur().type != Tk.EOF:
+            # Check we've got a binary operator
+            try:
+                operator = BinaryOperator(self.t.cur().type)
+            except ValueError:
+                break
+
             # Check the precedence is greater than the minimum
-            operator = BinaryOperator(self.t.cur().type)
             precedence = PRECEDENCES[operator]
-            if precedence <= min_precedence:
+            if precedence.value <= min_prec.value:
                 break
             self.t.next()
 
             # Parse the right operand
-            right = self.parse_expression_root(precedence)
+            right = self.parse_expression_recursive(precedence)
 
             # Check for a ternary operator
             if operator == BinaryOperator.TERNARY:
                 # Expect a colon
-                self.t.expect(Token.COLON)
+                self.t.expect(Tk.COLON)
                 self.t.next()
 
                 # Parse another expression
-                after = self.parse_expression_root(precedence)
+                after = self.parse_expression_recursive(precedence)
 
                 # Construct a ternary operation
                 left = TernaryExpression(left, right, after)
@@ -924,7 +949,7 @@ class Parser:
         :return: A cast expression.
         """
         # Check for an open parenthesis
-        if self.t.cur().type != Token.OPEN_PAREN:
+        if self.t.cur().type != Tk.OPEN_PAREN:
             return self.parse_sizeof_expression()
 
         # An open parenthesis here could indicate either a cast or a
@@ -954,12 +979,12 @@ class Parser:
         :return: A sizeof expression.
         """
         # Check we've got a sizeof operator
-        if self.t.cur().type != Token.SIZEOF:
+        if self.t.cur().type != Tk.SIZEOF:
             return self.parse_unary_expression()
         self.t.next()
 
         # Try parsing a type in parentheses
-        if self.t.cur().type == Token.OPEN_PAREN:
+        if self.t.cur().type == Tk.OPEN_PAREN:
             type = self.try_parse_type()
             if type is not None:
                 return SizeofExpression(type)
@@ -985,8 +1010,9 @@ class Parser:
         :return:  A unary expression.
         """
         # Check for a unary operator
-        operator = UnaryOperator(self.t.cur().type)
-        if operator not in UNARY_OPERATORS:
+        try:
+            operator = UnaryOperator(self.t.cur().type)
+        except ValueError:
             return self.parse_postfix_expression()
         self.t.next()
 
@@ -1026,18 +1052,17 @@ class Parser:
 
         # Continually parse postfix expressions
         while True:
-            if self.t.cur().type == Token.OPEN_BRACKET:
+            if self.t.cur().type == Tk.OPEN_BRACKET:
                 result = self.parse_array_access_expression(result)
-            elif self.t.cur().type == Token.OPEN_PAREN:
+            elif self.t.cur().type == Tk.OPEN_PAREN:
                 result = self.parse_function_call_expression(result)
-            elif self.t.cur().type == Token.DOT:
+            elif self.t.cur().type == Tk.DOT:
                 result = self.parse_field_access_expression(result)
-            elif self.t.cur().type == Token.ARROW:
+            elif self.t.cur().type == Tk.ARROW:
                 result = self.parse_deref_access_expression(result)
-            elif self.t.cur().type == Token.INC or \
-                    self.t.cur().type == Token.DEC:
-                self.t.next()
+            elif self.t.cur().type == Tk.INC or self.t.cur().type == Tk.DEC:
                 operator = UnaryOperator(self.t.cur().type)
+                self.t.next()
                 result = PostfixExpression(operator, result)
             else:
                 # No more postfix expressions
@@ -1052,14 +1077,14 @@ class Parser:
         :return:      An array access expression node.
         """
         # Expect an opening bracket
-        self.t.expect(Token.OPEN_BRACKET)
+        self.t.expect(Tk.OPEN_BRACKET)
         self.t.next()
 
         # Parse the index within the brackets
         index = self.parse_expression()
 
         # Expect a closing bracket
-        self.t.expect(Token.CLOSE_BRACKET)
+        self.t.expect(Tk.CLOSE_BRACKET)
         self.t.next()
         return ArrayAccessExpression(array, index)
 
@@ -1071,23 +1096,23 @@ class Parser:
         :return:     A function call expression node.
         """
         # Parse opening parenthesis
-        self.t.expect(Token.OPEN_PAREN)
+        self.t.expect(Tk.OPEN_PAREN)
         self.t.next()
 
         # Parse arguments
         args = []
-        while self.t.cur().type != Token.CLOSE_PAREN:
+        while self.t.cur().type != Tk.CLOSE_PAREN:
             # Parse an argument
-            args.append(self.parse_expression_root(Precedence.NONE))
+            args.append(self.parse_expression_root())
 
             # Expect a comma if we haven't reached the end of the arguments
-            if self.t.cur().type == Token.COMMA:
+            if self.t.cur().type == Tk.COMMA:
                 self.t.next()
             else:
                 break
 
         # Expect a closing parenthesis
-        self.t.expect(Token.CLOSE_PAREN)
+        self.t.expect(Tk.CLOSE_PAREN)
         self.t.next()
         return FunctionCallExpression(func, args)
 
@@ -1099,11 +1124,11 @@ class Parser:
         :return:       A field access expression node.
         """
         # Parse the dot
-        self.t.expect(Token.DOT)
+        self.t.expect(Tk.DOT)
         self.t.next()
 
         # Parse the field to access
-        self.t.expect(Token.IDENT)
+        self.t.expect(Tk.IDENT)
         access = FieldAccessExpression(struct, self.t.cur())
         self.t.next()
         return access
@@ -1116,11 +1141,11 @@ class Parser:
         :return:       A field access expression node.
         """
         # Parse the arrow
-        self.t.expect(Token.ARROW)
+        self.t.expect(Tk.ARROW)
         self.t.next()
 
         # Parse the field to access
-        self.t.expect(Token.IDENT)
+        self.t.expect(Tk.IDENT)
         field = self.t.cur()
         self.t.next()
 
@@ -1148,16 +1173,16 @@ class Parser:
         :return: A primary expression.
         """
         type = self.t.cur().type
-        if type == Token.IDENT:
+        if type == Tk.IDENT:
             # Parse a symbol from an identifier
             result = SymbolExpression(self.t.cur())
             self.t.next()
-        elif type != Token.CONST_INT and type != Token.CONST_FLOAT and \
-                type != Token.CONST_CHAR and type != Token.CONST_STR:
+        elif type == Tk.CONST_INT or type == Tk.CONST_FLOAT or \
+                type == Tk.CONST_CHAR or type == Tk.CONST_STR:
             # Parse a constant
             result = ConstantExpression(self.t.cur())
             self.t.next()
-        elif type == Token.OPEN_PAREN:
+        elif type == Tk.OPEN_PAREN:
             # Skip the open parenthesis
             self.t.next()
 
@@ -1165,7 +1190,7 @@ class Parser:
             result = self.parse_expression()
 
             # Expect a closing parenthesis
-            self.t.expect(Token.CLOSE_PAREN)
+            self.t.expect(Tk.CLOSE_PAREN)
             self.t.next()
         else:
             # Expected expression error
@@ -1174,21 +1199,11 @@ class Parser:
 
 
 """
-A list of all storage class specifiers.
-"""
-STORAGE_CLASSES = {
-    StorageClass.TYPEDEF, StorageClass.EXTERN, StorageClass.STATIC,
-    StorageClass.AUTO, StorageClass.REGISTER,
-}
-
-
-"""
 A list of all built-in type names.
 """
-BUILT_IN_TYPE_NAMES = {
-    Token.VOID, Token.CHAR, Token.SHORT, Token.INT,
-    Token.LONG, Token.SIGNED, Token.UNSIGNED, Token.FLOAT,
-    Token.DOUBLE,
+BUILT_IN_TYPE_TOKENS = {
+    Tk.VOID, Tk.CHAR, Tk.SHORT, Tk.INT, Tk.LONG, Tk.SIGNED, Tk.UNSIGNED,
+    Tk.FLOAT, Tk.DOUBLE,
 }
 
 
@@ -1198,46 +1213,35 @@ tokens (sorted in alphabetical order) that can be used to specify that built-in
 type.
 """
 BUILT_IN_TYPES = {
-    TypeSpecifier.VOID: [[Token.VOID]],
-    TypeSpecifier.CHAR: [[Token.CHAR], [Token.CHAR, Token.SIGNED]],
-    TypeSpecifier.UCHAR: [[Token.CHAR, Token.UNSIGNED]],
-    TypeSpecifier.SHORT: [[Token.SHORT], [Token.SHORT, Token.SIGNED],
-                          [Token.INT, Token.SHORT],
-                          [Token.INT, Token.SHORT, Token.SIGNED]],
-    TypeSpecifier.USHORT: [[Token.SHORT, Token.UNSIGNED],
-                           [Token.INT, Token.SHORT, Token.UNSIGNED]],
-    TypeSpecifier.INT: [[Token.INT], [Token.SIGNED], [Token.INT, Token.SIGNED]],
-    TypeSpecifier.UINT: [[Token.UNSIGNED], [Token.INT, Token.UNSIGNED]],
-    TypeSpecifier.LONG: [[Token.LONG], [Token.LONG, Token.SIGNED],
-                         [Token.INT, Token.LONG],
-                         [Token.INT, Token.LONG, Token.SIGNED]],
-    TypeSpecifier.ULONG: [[Token.LONG, Token.UNSIGNED],
-                          [Token.INT, Token.LONG, Token.UNSIGNED]],
-    TypeSpecifier.LLONG: [[Token.LONG, Token.LONG],
-                          [Token.LONG, Token.LONG, Token.SIGNED],
-                          [Token.INT, Token.LONG, Token.LONG],
-                          [Token.INT, Token.LONG, Token.LONG, Token.SIGNED]],
-    TypeSpecifier.ULLONG: [[Token.LONG, Token.LONG, Token.UNSIGNED],
-                           [Token.INT, Token.LONG, Token.LONG, Token.UNSIGNED]],
-    TypeSpecifier.FLOAT: [[Token.FLOAT]],
-    TypeSpecifier.DOUBLE: [[Token.DOUBLE], [Token.DOUBLE, Token.LONG]],
+    TypeSpecifier.VOID: [[Tk.VOID]],
+    TypeSpecifier.CHAR: [[Tk.CHAR], [Tk.CHAR, Tk.SIGNED]],
+    TypeSpecifier.UCHAR: [[Tk.CHAR, Tk.UNSIGNED]],
+    TypeSpecifier.SHORT: [[Tk.SHORT], [Tk.SHORT, Tk.SIGNED], [Tk.INT, Tk.SHORT],
+                          [Tk.INT, Tk.SHORT, Tk.SIGNED]],
+    TypeSpecifier.USHORT: [[Tk.SHORT, Tk.UNSIGNED],
+                           [Tk.INT, Tk.SHORT, Tk.UNSIGNED]],
+    TypeSpecifier.INT: [[Tk.INT], [Tk.SIGNED], [Tk.INT, Tk.SIGNED]],
+    TypeSpecifier.UINT: [[Tk.UNSIGNED], [Tk.INT, Tk.UNSIGNED]],
+    TypeSpecifier.LONG: [[Tk.LONG], [Tk.LONG, Tk.SIGNED], [Tk.INT, Tk.LONG],
+                         [Tk.INT, Tk.LONG, Tk.SIGNED]],
+    TypeSpecifier.ULONG: [[Tk.LONG, Tk.UNSIGNED],
+                          [Tk.INT, Tk.LONG, Tk.UNSIGNED]],
+    TypeSpecifier.LLONG: [[Tk.LONG, Tk.LONG], [Tk.LONG, Tk.LONG, Tk.SIGNED],
+                          [Tk.INT, Tk.LONG, Tk.LONG],
+                          [Tk.INT, Tk.LONG, Tk.LONG, Tk.SIGNED]],
+    TypeSpecifier.ULLONG: [[Tk.LONG, Tk.LONG, Tk.UNSIGNED],
+                           [Tk.INT, Tk.LONG, Tk.LONG, Tk.UNSIGNED]],
+    TypeSpecifier.FLOAT: [[Tk.FLOAT]],
+    TypeSpecifier.DOUBLE: [[Tk.DOUBLE], [Tk.DOUBLE, Tk.LONG]],
 }
 
 
 """
-A list of all type qualifiers.
+Lists of tokens that constitute each part of a declaration specifier.
 """
-TYPE_QUALIFIERS = {
-    TypeQualifier.CONST, TypeQualifier.RESTRICT, TypeQualifier.VOLATILE,
-}
-
-
-"""
-A list of all function specifiers.
-"""
-FUNCTION_SPECIFIERS = {
-    FunctionSpecifier.INLINE,
-}
+STORAGE_CLASSES = [Tk(x.value) for x in StorageClass]
+TYPE_QUALIFIERS = [Tk(x.value) for x in TypeQualifier]
+FUNCTION_SPECIFIERS = [Tk(x.value) for x in FunctionSpecifier]
 
 
 """
@@ -1274,20 +1278,4 @@ PRECEDENCES = {
     BinaryOperator.MUL: Precedence.MUL,
     BinaryOperator.DIV: Precedence.MUL,
     BinaryOperator.MOD: Precedence.MUL,
-}
-
-
-"""
-A list of all binary operators.
-"""
-BINARY_OPERATORS = set(PRECEDENCES.keys())
-
-
-"""
-A list of all unary operators.
-"""
-UNARY_OPERATORS = {
-    UnaryOperator.DEREF, UnaryOperator.ADDR, UnaryOperator.ADD,
-    UnaryOperator.NEG, UnaryOperator.BITWISE_NOT, UnaryOperator.LOGICAL_NOT,
-    UnaryOperator.INC, UnaryOperator.DEC, UnaryOperator.SIZEOF,
 }

@@ -5,10 +5,21 @@
 
 import unittest
 from unittest import TestCase
-from lexer import Tokens, Token
-from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier, \
-    FunctionSpecifier, DeclaratorPointerPart, DeclaratorFunctionPart,  \
+from typing import cast
+
+from lexer import Tokens, Tk
+from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier,    \
+    FunctionSpecifier, DeclaratorPointerPart, DeclaratorFunctionPart,     \
     DeclaratorArrayPart
+from parser import ExpressionList, TernaryExpression, BinaryExpression,   \
+    CastExpression, SizeofExpression, UnaryExpression, PostfixExpression, \
+    ArrayAccessExpression, FunctionCallExpression, FieldAccessExpression, \
+    SymbolExpression, ConstantExpression, BinaryOperator, UnaryOperator
+
+
+# ******************************************************************************
+#     Declarator Tests
+# ******************************************************************************
 
 
 class TestDeclarationSpecifiers(TestCase):
@@ -180,7 +191,7 @@ class TestPointerDeclarators(TestCase):
         t = Tokens("", "a")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 0)
 
@@ -188,7 +199,7 @@ class TestPointerDeclarators(TestCase):
         t = Tokens("", "*a")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -198,7 +209,7 @@ class TestPointerDeclarators(TestCase):
         t = Tokens("", "**a")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -210,7 +221,7 @@ class TestPointerDeclarators(TestCase):
         t = Tokens("", "*const a")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -220,7 +231,7 @@ class TestPointerDeclarators(TestCase):
         t = Tokens("", "*const *a; **const a")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -230,7 +241,7 @@ class TestPointerDeclarators(TestCase):
 
         t.next()  # Skip the semicolon
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
         self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST})
@@ -242,7 +253,7 @@ class TestPointerDeclarators(TestCase):
         t = Tokens("", "*const *restrict a")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -254,7 +265,7 @@ class TestPointerDeclarators(TestCase):
         t = Tokens("", "*const restrict a")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -267,7 +278,7 @@ class TestFunctionDeclarators(TestCase):
         t = Tokens("", "a(); a(void)")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
@@ -275,7 +286,7 @@ class TestFunctionDeclarators(TestCase):
 
         t.next()  # Skip the semicolon
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
@@ -285,7 +296,7 @@ class TestFunctionDeclarators(TestCase):
         t = Tokens("", "a(int); a(int b)")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
@@ -296,14 +307,14 @@ class TestFunctionDeclarators(TestCase):
 
         t.next()  # Skip the semicolon
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 1)
         arg = d.parts[0].args[0]
         self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
-        self.assertTrue(arg.declarator.name.type, Token.IDENT)
+        self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
 
@@ -311,14 +322,14 @@ class TestFunctionDeclarators(TestCase):
         t = Tokens("", "((((a(int (b))))))")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 1)
         arg = d.parts[0].args[0]
         self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
-        self.assertTrue(arg.declarator.name.type, Token.IDENT)
+        self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
 
@@ -326,7 +337,7 @@ class TestFunctionDeclarators(TestCase):
         t = Tokens("", "a(int, char); a(int b, char c)")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
@@ -340,19 +351,19 @@ class TestFunctionDeclarators(TestCase):
 
         t.next()  # Skip the semicolon
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 2)
         arg = d.parts[0].args[0]
         self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
-        self.assertTrue(arg.declarator.name.type, Token.IDENT)
+        self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
         arg = d.parts[0].args[1]
         self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.CHAR)
-        self.assertTrue(arg.declarator.name.type, Token.IDENT)
+        self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "c")
         self.assertEqual(len(arg.declarator.parts), 0)
 
@@ -362,7 +373,7 @@ class TestArrayDeclarators(TestCase):
         t = Tokens("", "a[]")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -374,7 +385,7 @@ class TestArrayDeclarators(TestCase):
         t = Tokens("", "a[][]")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -390,7 +401,7 @@ class TestArrayDeclarators(TestCase):
         t = Tokens("", "((((((a[]))))[]))")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -406,7 +417,7 @@ class TestArrayDeclarators(TestCase):
         t = Tokens("", "a[static]")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -418,7 +429,7 @@ class TestArrayDeclarators(TestCase):
         t = Tokens("", "a[const restrict]")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -431,7 +442,7 @@ class TestArrayDeclarators(TestCase):
         t = Tokens("", "a[const restrict static]")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -446,7 +457,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(*a)()")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -458,7 +469,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(*const a)()")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -470,7 +481,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(*const a)(int b)")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -479,7 +490,7 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(len(d.parts[1].args), 1)
         arg = d.parts[1].args[0]
         self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
-        self.assertTrue(arg.declarator.name.type, Token.IDENT)
+        self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
 
@@ -487,7 +498,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "*a()")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
@@ -499,7 +510,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(((*((((a())))))))")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
@@ -511,7 +522,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "*(*a)()")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 3)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -525,7 +536,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(a[])()")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -539,7 +550,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(*a[])()")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 3)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
@@ -555,7 +566,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(*(*a)[])()")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 4)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -573,7 +584,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(*a())[]")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 3)
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
@@ -589,7 +600,7 @@ class TestMixedDeclarators(TestCase):
         t = Tokens("", "(*(*a)(int))(char)")
         p = Parser(t)
         d = p.parse_declarator()
-        self.assertEqual(d.name.type, Token.IDENT)
+        self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 4)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -600,6 +611,434 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.parts[2].type_qualifiers, set())
         self.assertTrue(isinstance(d.parts[3], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[3].args), 1)
+
+
+# ******************************************************************************
+#     Expression Tests
+# ******************************************************************************
+
+
+class TestPrimaryExpressions(TestCase):
+    def test_symbols(self):
+        t = Tokens("", "hello")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, SymbolExpression))
+        e = cast(SymbolExpression, e)
+        self.assertEqual(e.name.type, Tk.IDENT)
+        self.assertEqual(e.name.contents, "hello")
+
+    def test_constants(self):
+        t = Tokens("", "123")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, ConstantExpression))
+        e = cast(ConstantExpression, e)
+        self.assertEqual(e.value.type, Tk.CONST_INT)
+        self.assertEqual(e.value.number, 123)
+
+
+class TestUnaryExpressions(TestCase):
+    def test_single_operators(self):
+        t = Tokens("", "-a; !b")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.NEG)
+        e = e.operand
+        self.assertTrue(isinstance(e, SymbolExpression))
+        e = cast(SymbolExpression, e)
+        self.assertTrue(e.name.type, Tk.IDENT)
+        self.assertTrue(e.name.contents, "a")
+
+        t.next()  # Skip the semicolon
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.LOGICAL_NOT)
+        e = e.operand
+        self.assertTrue(isinstance(e, SymbolExpression))
+        e = cast(SymbolExpression, e)
+        self.assertTrue(e.name.type, Tk.IDENT)
+        self.assertTrue(e.name.contents, "b")
+
+    def test_multiple_operators(self):
+        t = Tokens("", "- -3; - - - 3; *&*d")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.NEG)
+        e = e.operand
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.NEG)
+        e = e.operand
+        self.assertTrue(isinstance(e, ConstantExpression))
+        e = cast(ConstantExpression, e)
+        self.assertTrue(e.value.type, Tk.CONST_INT)
+        self.assertTrue(e.value.number, 3)
+
+        t.next()  # Skip the semicolon
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.NEG)
+        e = e.operand
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.NEG)
+        e = e.operand
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.NEG)
+        e = e.operand
+        self.assertTrue(isinstance(e, ConstantExpression))
+        e = cast(ConstantExpression, e)
+        self.assertTrue(e.value.type, Tk.CONST_INT)
+        self.assertTrue(e.value.number, 3)
+
+        t.next()  # Skip the semicolon
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.DEREF)
+        e = e.operand
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.ADDR)
+        e = e.operand
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.DEREF)
+        e = e.operand
+        self.assertTrue(isinstance(e, SymbolExpression))
+        e = cast(SymbolExpression, e)
+        self.assertTrue(e.name.type, Tk.IDENT)
+        self.assertTrue(e.name.contents, "d")
+
+    def test_prefix_operators(self):
+        t = Tokens("", "--3; ++a")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.DEC)
+        e = e.operand
+        self.assertTrue(isinstance(e, ConstantExpression))
+        e = cast(ConstantExpression, e)
+        self.assertEqual(e.value.type, Tk.CONST_INT)
+        self.assertEqual(e.value.number, 3)
+
+        t.next()  # Skip the semicolon
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.INC)
+        e = e.operand
+        self.assertTrue(isinstance(e, SymbolExpression))
+        e = cast(SymbolExpression, e)
+        self.assertEqual(e.name.type, Tk.IDENT)
+        self.assertEqual(e.name.contents, "a")
+
+
+class TestSizeofExpressions(TestCase):
+    def test_sizeof_expression(self):
+        t = Tokens("", "sizeof a")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.SIZEOF)
+        e = e.operand
+        self.assertTrue(isinstance(e, SymbolExpression))
+        e = cast(SymbolExpression, e)
+        self.assertEqual(e.name.type, Tk.IDENT)
+        self.assertEqual(e.name.contents, "a")
+
+    def test_sizeof_declaration_specifiers(self):
+        t = Tokens("", "sizeof(int)")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, SizeofExpression))
+        e = cast(SizeofExpression, e)
+        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertTrue(e.type.declarator is None)
+
+    def test_sizeof_with_declarator(self):
+        t = Tokens("", "sizeof(int *)")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, SizeofExpression))
+        e = cast(SizeofExpression, e)
+        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
+        d = e.type.declarator
+        self.assertTrue(d.name is None)
+        self.assertEqual(len(d.parts), 1)
+        self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
+
+
+class TestBinaryExpressions(TestCase):
+    def test_basic_operation(self):
+        t = Tokens("", "3 + 4")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, BinaryExpression))
+        e = cast(BinaryExpression, e)
+        self.assertEqual(e.operator, BinaryOperator.ADD)
+        self.assertTrue(isinstance(e.left, ConstantExpression))
+        self.assertTrue(isinstance(e.right, ConstantExpression))
+        l = cast(ConstantExpression, e.left)
+        self.assertEqual(l.value.type, Tk.CONST_INT)
+        self.assertEqual(l.value.number, 3)
+        r = cast(ConstantExpression, e.right)
+        self.assertEqual(r.value.type, Tk.CONST_INT)
+        self.assertEqual(r.value.number, 4)
+
+    def test_same_precedence(self):
+        t = Tokens("", "3 + 4 + 5")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, BinaryExpression))
+        e = cast(BinaryExpression, e)
+        self.assertEqual(e.operator, BinaryOperator.ADD)
+        self.assertTrue(isinstance(e.left, BinaryExpression))
+        self.assertTrue(isinstance(e.right, ConstantExpression))
+        l = cast(BinaryExpression, e.left)
+        self.assertEqual(l.operator, BinaryOperator.ADD)
+        self.assertTrue(isinstance(l.left, ConstantExpression))
+        self.assertTrue(isinstance(l.right, ConstantExpression))
+        ll = cast(ConstantExpression, l.left)
+        self.assertEqual(ll.value.type, Tk.CONST_INT)
+        self.assertEqual(ll.value.number, 3)
+        lr = cast(ConstantExpression, l.right)
+        self.assertEqual(lr.value.type, Tk.CONST_INT)
+        self.assertEqual(lr.value.number, 4)
+        r = cast(ConstantExpression, e.right)
+        self.assertEqual(r.value.type, Tk.CONST_INT)
+        self.assertEqual(r.value.number, 5)
+
+    def test_different_precedences(self):
+        t = Tokens("", "3 + 4 * 5")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, BinaryExpression))
+        e = cast(BinaryExpression, e)
+        self.assertEqual(e.operator, BinaryOperator.ADD)
+        self.assertTrue(isinstance(e.left, ConstantExpression))
+        self.assertTrue(isinstance(e.right, BinaryExpression))
+        l = cast(ConstantExpression, e.left)
+        self.assertEqual(l.value.type, Tk.CONST_INT)
+        self.assertEqual(l.value.number, 3)
+        r = cast(BinaryExpression, e.right)
+        self.assertEqual(r.operator, BinaryOperator.MUL)
+        self.assertTrue(isinstance(r.left, ConstantExpression))
+        self.assertTrue(isinstance(r.right, ConstantExpression))
+        rl = cast(ConstantExpression, r.left)
+        self.assertEqual(rl.value.type, Tk.CONST_INT)
+        self.assertEqual(rl.value.number, 4)
+        rr = cast(ConstantExpression, r.right)
+        self.assertEqual(rr.value.type, Tk.CONST_INT)
+        self.assertEqual(rr.value.number, 5)
+
+    def test_subexpressions(self):
+        t = Tokens("", "(3 + 4) * 5")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, BinaryExpression))
+        e = cast(BinaryExpression, e)
+        self.assertEqual(e.operator, BinaryOperator.MUL)
+        self.assertTrue(isinstance(e.left, BinaryExpression))
+        self.assertTrue(isinstance(e.right, ConstantExpression))
+        l = cast(BinaryExpression, e.left)
+        self.assertEqual(l.operator, BinaryOperator.ADD)
+        self.assertTrue(isinstance(l.left, ConstantExpression))
+        self.assertTrue(isinstance(l.right, ConstantExpression))
+        ll = cast(ConstantExpression, l.left)
+        self.assertEqual(ll.value.type, Tk.CONST_INT)
+        self.assertEqual(ll.value.number, 3)
+        lr = cast(ConstantExpression, l.right)
+        self.assertEqual(lr.value.type, Tk.CONST_INT)
+        self.assertEqual(lr.value.number, 4)
+        r = cast(ConstantExpression, e.right)
+        self.assertEqual(r.value.type, Tk.CONST_INT)
+        self.assertEqual(r.value.number, 5)
+
+    def test_ternary(self):
+        t = Tokens("", "3 ? 4 : 5")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, TernaryExpression))
+        e = cast(TernaryExpression, e)
+        self.assertTrue(isinstance(e.condition, ConstantExpression))
+        self.assertTrue(isinstance(e.true, ConstantExpression))
+        self.assertTrue(isinstance(e.false, ConstantExpression))
+        c = cast(ConstantExpression, e.condition)
+        self.assertEqual(c.value.type, Tk.CONST_INT)
+        self.assertEqual(c.value.number, 3)
+        t = cast(ConstantExpression, e.true)
+        self.assertEqual(t.value.type, Tk.CONST_INT)
+        self.assertEqual(t.value.number, 4)
+        f = cast(ConstantExpression, e.false)
+        self.assertEqual(f.value.type, Tk.CONST_INT)
+        self.assertEqual(f.value.number, 5)
+
+
+class TestCastExpressions(TestCase):
+    def test_just_declaration_specifiers(self):
+        t = Tokens("", "(int) 3")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, CastExpression))
+        e = cast(CastExpression, e)
+        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertTrue(e.type.declarator is None)
+        self.assertTrue(isinstance(e.operand, ConstantExpression))
+        e = cast(ConstantExpression, e.operand)
+        self.assertEqual(e.value.type, Tk.CONST_INT)
+        self.assertEqual(e.value.number, 3)
+
+    def test_with_declarator(self):
+        t = Tokens("", "(int *) 3")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, CastExpression))
+        e = cast(CastExpression, e)
+        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
+        d = e.type.declarator
+        self.assertTrue(d.name is None)
+        self.assertEqual(len(d.parts), 1)
+        self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
+        self.assertTrue(isinstance(e.operand, ConstantExpression))
+        e = cast(ConstantExpression, e.operand)
+        self.assertEqual(e.value.type, Tk.CONST_INT)
+        self.assertEqual(e.value.number, 3)
+
+
+class TestPostfixExpressions(TestCase):
+    def test_postfix_operators(self):
+        t = Tokens("", "3--")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, PostfixExpression))
+        e = cast(PostfixExpression, e)
+        self.assertEqual(e.operator, UnaryOperator.DEC)
+        e = e.operand
+        self.assertTrue(isinstance(e, ConstantExpression))
+        e = cast(ConstantExpression, e)
+        self.assertEqual(e.value.type, Tk.CONST_INT)
+        self.assertEqual(e.value.number, 3)
+
+    def test_array_access(self):
+        t = Tokens("", "a[3]")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, ArrayAccessExpression))
+        e = cast(ArrayAccessExpression, e)
+        self.assertTrue(isinstance(e.array, SymbolExpression))
+        self.assertTrue(isinstance(e.index, ConstantExpression))
+        a = cast(SymbolExpression, e.array)
+        self.assertEqual(a.name.type, Tk.IDENT)
+        self.assertEqual(a.name.contents, "a")
+        i = cast(ConstantExpression, e.index)
+        self.assertEqual(i.value.type, Tk.CONST_INT)
+        self.assertEqual(i.value.number, 3)
+
+    def test_function_call_no_args(self):
+        t = Tokens("", "a()")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, FunctionCallExpression))
+        e = cast(FunctionCallExpression, e)
+        self.assertTrue(isinstance(e.function, SymbolExpression))
+        f = cast(SymbolExpression, e.function)
+        self.assertEqual(f.name.type, Tk.IDENT)
+        self.assertEqual(f.name.contents, "a")
+        self.assertEqual(len(e.args), 0)
+
+    def test_function_call_one_arg(self):
+        t = Tokens("", "a(3)")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, FunctionCallExpression))
+        e = cast(FunctionCallExpression, e)
+        self.assertTrue(isinstance(e.function, SymbolExpression))
+        f = cast(SymbolExpression, e.function)
+        self.assertEqual(f.name.type, Tk.IDENT)
+        self.assertEqual(f.name.contents, "a")
+        self.assertEqual(len(e.args), 1)
+        self.assertTrue(isinstance(e.args[0], ConstantExpression))
+        a = cast(ConstantExpression, e.args[0])
+        self.assertEqual(a.value.type, Tk.CONST_INT)
+        self.assertEqual(a.value.number, 3)
+
+    def test_function_call_multiple_args(self):
+        t = Tokens("", "a(3, 4)")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, FunctionCallExpression))
+        e = cast(FunctionCallExpression, e)
+        self.assertTrue(isinstance(e.function, SymbolExpression))
+        f = cast(SymbolExpression, e.function)
+        self.assertEqual(f.name.type, Tk.IDENT)
+        self.assertEqual(f.name.contents, "a")
+        self.assertEqual(len(e.args), 2)
+        self.assertTrue(isinstance(e.args[0], ConstantExpression))
+        a = cast(ConstantExpression, e.args[0])
+        self.assertEqual(a.value.type, Tk.CONST_INT)
+        self.assertEqual(a.value.number, 3)
+        self.assertTrue(isinstance(e.args[1], ConstantExpression))
+        a = cast(ConstantExpression, e.args[1])
+        self.assertEqual(a.value.type, Tk.CONST_INT)
+        self.assertEqual(a.value.number, 4)
+
+    def test_field_access(self):
+        t = Tokens("", "a.b")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, FieldAccessExpression))
+        e = cast(FieldAccessExpression, e)
+        self.assertTrue(isinstance(e.struct, SymbolExpression))
+        s = cast(SymbolExpression, e.struct)
+        self.assertEqual(s.name.type, Tk.IDENT)
+        self.assertEqual(s.name.contents, "a")
+        self.assertEqual(e.name.type, Tk.IDENT)
+        self.assertEqual(e.name.contents, "b")
+
+    def test_field_deref_access(self):
+        t = Tokens("", "a->b")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, FieldAccessExpression))
+        e = cast(FieldAccessExpression, e)
+        self.assertEqual(e.name.type, Tk.IDENT)
+        self.assertEqual(e.name.contents, "b")
+        self.assertTrue(isinstance(e.struct, UnaryExpression))
+        e = cast(UnaryExpression, e.struct)
+        self.assertEqual(e.operator, UnaryOperator.DEREF)
+        self.assertTrue(isinstance(e.operand, SymbolExpression))
+        e = cast(SymbolExpression, e.operand)
+        self.assertEqual(e.name.type, Tk.IDENT)
+        self.assertEqual(e.name.contents, "a")
+
+
+class TestExpressionList(TestCase):
+    def test_two_expressions(self):
+        t = Tokens("", "a, b")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, ExpressionList))
+        e = cast(ExpressionList, e)
+        self.assertEqual(len(e.roots), 2)
+        self.assertTrue(isinstance(e.roots[0], SymbolExpression))
+        self.assertTrue(isinstance(e.roots[1], SymbolExpression))
+        a = cast(SymbolExpression, e.roots[0])
+        self.assertEqual(a.name.type, Tk.IDENT)
+        self.assertEqual(a.name.contents, "a")
+        b = cast(SymbolExpression, e.roots[1])
+        self.assertEqual(b.name.type, Tk.IDENT)
+        self.assertEqual(b.name.contents, "b")
 
 
 if __name__ == '__main__':

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 from typing import Optional
+from enum import Enum
 import string
 
 from error import Error
@@ -34,7 +35,7 @@ class Tokens:
             self.tokens.append(token)
 
             # Stop when we reach the end of the file
-            if token.type == Token.EOF:
+            if token.type == Tk.EOF:
                 break
 
     def cur(self) -> Token:
@@ -67,7 +68,7 @@ class Tokens:
         else:
             return self.tokens[self.cursor + amount]
 
-    def expect(self, expected: Token):
+    def expect(self, expected: Tk):
         """
         Triggers an exception if the current token is not of the expected type.
 
@@ -118,7 +119,7 @@ class Lexer:
         """
         # End of file
         if self.scanner.is_eof():
-            return self.token(Token.EOF, 0)
+            return self.token(Tk.EOF, 0)
 
         # Whitespace
         if self.scanner.cur().isspace():
@@ -150,14 +151,17 @@ class Lexer:
         :return: An identifier token.
         """
         # Find the first non-alphabetic, non-numeric character
-        token = self.token(Token.IDENT, 0)
-        while not self.scanner.is_eof() and is_ident_continue(self.scanner.cur()):
+        token = self.token(Tk.IDENT, 0)
+        while not self.scanner.is_eof() and \
+                is_ident_continue(self.scanner.cur()):
             self.scanner.next()
         token.set_length(self.scanner.cursor - token.start)
 
         # Check to see if the identifier is a reserved keyword
-        if token.contents in KEYWORDS:
-            token.type = token.contents
+        try:
+            token.type = Tk(token.contents)
+        except ValueError:
+            pass
         return token
 
     def is_hex_float(self) -> bool:
@@ -183,7 +187,7 @@ class Lexer:
 
         :return: A number token.
         """
-        token = self.token(Token.CONST_FLOAT, 0)
+        token = self.token(Tk.CONST_FLOAT, 0)
         token.start -= 2  # Include the hex prefix
         start = self.scanner.cursor
 
@@ -225,7 +229,7 @@ class Lexer:
         ch = self.scanner.cur().lower()
         if ch in FLOAT_SUFFIXES:
             token.suffix = FLOAT_SUFFIXES[ch]
-            self.scanner.consume(len(ch))
+            self.scanner.next()
         token.set_length(self.scanner.cursor - start)
 
         # Check there's nothing after the suffix
@@ -256,7 +260,7 @@ class Lexer:
 
         :return: A number token.
         """
-        token = self.token(Token.CONST_FLOAT, 0)
+        token = self.token(Tk.CONST_FLOAT, 0)
         token.start -= 2  # Include the hex prefix
         start = self.scanner.cursor
 
@@ -314,7 +318,7 @@ class Lexer:
         predicate = predicates[base]
 
         # Consume a series of valid digits
-        token = self.token(Token.CONST_INT, 0)
+        token = self.token(Tk.CONST_INT, 0)
         while predicate(self.scanner.cur()):
             self.scanner.next()
 
@@ -376,14 +380,14 @@ class Lexer:
         :return: A syntax token (or None).
         """
         # Iterate over syntax tokens in order
-        for syntax_token in SYNTAX_TOKENS:
-            if self.scanner.slice(len(syntax_token)) == syntax_token:
-                token = self.token(syntax_token, len(syntax_token))
-                self.scanner.consume(len(syntax_token))
+        for syntax in SYNTAX_TOKENS:
+            if self.scanner.slice(len(syntax.value)) == syntax.value:
+                token = self.token(syntax, len(syntax.value))
+                self.scanner.consume(len(syntax.value))
                 return token
         return None
 
-    def token(self, type: str, length: int) -> Token:
+    def token(self, type: Tk, length: int) -> Token:
         """
         Creates a new token with the given type and arrow length. Copies across
         the file, line, and column information from the scanner.
@@ -542,12 +546,10 @@ class Scanner:
         raise err
 
 
-class Token:
+class Tk(Enum):
     """
-    A token is the smallest building block of the language, like a comma,
-    semicolon, number, or identifier.
+    A list of all possible token types.
     """
-
     # 3 character tokens
     RSHIFT_ASSIGN = ">>="
     LSHIFT_ASSIGN = "<<="
@@ -633,7 +635,7 @@ class Token:
     UNION = "union"
     UNSIGNED = "unsigned"
     VOID = "void"
-    VOLTATILE = "volatile"
+    VOLATILE = "volatile"
     WHILE = "while"
 
     # Other
@@ -647,7 +649,14 @@ class Token:
     COMBINED = "combined"
     EOF = "end of file"
 
-    def __init__(self, type: str):
+
+class Token:
+    """
+    A token is the smallest building block of the language, like a comma,
+    semicolon, number, or identifier.
+    """
+
+    def __init__(self, type: Tk):
         """
         Create a new token with values initialised to some meaningless defaults.
 
@@ -679,13 +688,12 @@ class Token:
 
     def combine(self, end: Token) -> Token:
         """
-        Combine all tokens between the given starting and ending tokens into one
-        large token, for use with errors.
+        Combine all tokens between this token and the end token into one large
+        token, for use with errors.
 
-        :param start: The starting token.
-        :param end:   The ending token.
-        :return:      A token formed by combining all tokens between the start
-                      and end tokens.
+        :param end: The last token in the combined range
+        :return:    A token formed by combining all tokens between this one and
+                    'end'.
         """
         # Ensure the start and end tokens are from the same file
         assert(self.file == end.file)
@@ -696,7 +704,7 @@ class Token:
             return end.combine(self)  # Swap the order
 
         # Create the combined token
-        token = Token(Token.COMBINED)
+        token = Token(Tk.COMBINED)
         token.file = self.file
         token.start = self.start
         token.line_num = self.line_num
@@ -795,13 +803,13 @@ def is_ident_continue(character: str) -> bool:
 A list of all reserved keywords.
 """
 KEYWORDS = [
-    Token.AUTO, Token.BREAK, Token.CASE, Token.CHAR, Token.CONST,
-    Token.CONTINUE, Token.DEFAULT, Token.DO, Token.DOUBLE, Token.ELSE,
-    Token.ENUM, Token.EXTERN, Token.FLOAT, Token.FOR, Token.GOTO, Token.IF,
-    Token.INLINE, Token.INT, Token.LONG, Token.REGISTER, Token.RESTRICT,
-    Token.RETURN, Token.SHORT, Token.SIGNED, Token.SIZEOF, Token.STATIC,
-    Token.STRUCT, Token.SWITCH, Token.TYPEDEF, Token.UNION, Token.UNSIGNED,
-    Token.VOID, Token.VOLTATILE, Token.WHILE,
+    Tk.AUTO, Tk.BREAK, Tk.CASE, Tk.CHAR, Tk.CONST,
+    Tk.CONTINUE, Tk.DEFAULT, Tk.DO, Tk.DOUBLE, Tk.ELSE,
+    Tk.ENUM, Tk.EXTERN, Tk.FLOAT, Tk.FOR, Tk.GOTO, Tk.IF,
+    Tk.INLINE, Tk.INT, Tk.LONG, Tk.REGISTER, Tk.RESTRICT,
+    Tk.RETURN, Tk.SHORT, Tk.SIGNED, Tk.SIZEOF, Tk.STATIC,
+    Tk.STRUCT, Tk.SWITCH, Tk.TYPEDEF, Tk.UNION, Tk.UNSIGNED,
+    Tk.VOID, Tk.VOLATILE, Tk.WHILE,
 ]
 
 
@@ -810,22 +818,22 @@ A list of all syntax tokens, in descending order of length.
 """
 SYNTAX_TOKENS = [
     # 3 character tokens
-    Token.RSHIFT_ASSIGN, Token.LSHIFT_ASSIGN, Token.ELLIPSIS,
+    Tk.RSHIFT_ASSIGN, Tk.LSHIFT_ASSIGN, Tk.ELLIPSIS,
 
     # 2 character tokens
-    Token.INC, Token.DEC, Token.ADD_ASSIGN, Token.SUB_ASSIGN, Token.MUL_ASSIGN,
-    Token.DIV_ASSIGN, Token.MOD_ASSIGN, Token.AND_ASSIGN, Token.OR_ASSIGN,
-    Token.XOR_ASSIGN, Token.RSHIFT, Token.LSHIFT, Token.ARROW,
-    Token.LOGICAL_AND, Token.LOGICAL_OR, Token.GE, Token.LE, Token.EQ,
-    Token.NEQ,
+    Tk.INC, Tk.DEC, Tk.ADD_ASSIGN, Tk.SUB_ASSIGN, Tk.MUL_ASSIGN,
+    Tk.DIV_ASSIGN, Tk.MOD_ASSIGN, Tk.AND_ASSIGN, Tk.OR_ASSIGN,
+    Tk.XOR_ASSIGN, Tk.RSHIFT, Tk.LSHIFT, Tk.ARROW,
+    Tk.LOGICAL_AND, Tk.LOGICAL_OR, Tk.GE, Tk.LE, Tk.EQ,
+    Tk.NEQ,
 
     # 1 character tokens
-    Token.ADD, Token.SUB, Token.MUL, Token.DIV, Token.MOD, Token.GT, Token.LT,
-    Token.ASSIGN, Token.SEMICOLON, Token.COMMA, Token.OPEN_PAREN,
-    Token.CLOSE_PAREN, Token.OPEN_BRACKET, Token.CLOSE_BRACKET,
-    Token.OPEN_BRACE, Token.CLOSE_BRACE, Token.COLON, Token.DOT,
-    Token.BITWISE_AND, Token.BITWISE_OR, Token.BITWISE_XOR, Token.BITWISE_NOT,
-    Token.LOGICAL_NOT, Token.TERNARY,
+    Tk.ADD, Tk.SUB, Tk.MUL, Tk.DIV, Tk.MOD, Tk.GT, Tk.LT,
+    Tk.ASSIGN, Tk.SEMICOLON, Tk.COMMA, Tk.OPEN_PAREN,
+    Tk.CLOSE_PAREN, Tk.OPEN_BRACKET, Tk.CLOSE_BRACKET,
+    Tk.OPEN_BRACE, Tk.CLOSE_BRACE, Tk.COLON, Tk.DOT,
+    Tk.BITWISE_AND, Tk.BITWISE_OR, Tk.BITWISE_XOR, Tk.BITWISE_NOT,
+    Tk.LOGICAL_NOT, Tk.TERNARY,
 ]
 
 

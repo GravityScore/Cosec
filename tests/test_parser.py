@@ -8,13 +8,18 @@ from unittest import TestCase
 from typing import cast
 
 from lexer import Tokens, Tk
-from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier,    \
-    FunctionSpecifier, DeclaratorPointerPart, DeclaratorFunctionPart,     \
-    DeclaratorArrayPart
-from parser import ExpressionList, TernaryExpression, BinaryExpression,   \
-    CastExpression, SizeofExpression, UnaryExpression, PostfixExpression, \
-    ArrayAccessExpression, FunctionCallExpression, FieldAccessExpression, \
+from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier,        \
+    FunctionSpecifier, DeclaratorPointerPart, DeclaratorFunctionPart,         \
+    DeclaratorArrayPart, DeclarationList, Declaration
+from parser import ExpressionList, TernaryExpression, BinaryExpression,       \
+    CastExpression, SizeofExpression, UnaryExpression, PostfixExpression,     \
+    ArrayAccessExpression, FunctionCallExpression, FieldAccessExpression,     \
     SymbolExpression, ConstantExpression, BinaryOperator, UnaryOperator
+from parser import FunctionDefinition, Statement, CompoundStatement,          \
+    DeclarationStatement, ExpressionStatement, IfStatementChain, IfStatement, \
+    SwitchStatement, CaseStatement, DefaultStatement, WhileStatement,         \
+    DoWhileStatement, ForStatement, ContinueStatement, BreakStatement,        \
+    ReturnStatement, GotoStatement, LabelStatement
 
 
 # ******************************************************************************
@@ -1041,5 +1046,385 @@ class TestExpressionList(TestCase):
         self.assertEqual(b.name.contents, "b")
 
 
-if __name__ == '__main__':
+# ******************************************************************************
+#     Statement Tests
+# ******************************************************************************
+
+
+class TestLabelledStatement(TestCase):
+    def test_labelled_statement(self):
+        t = Tokens("", "label:")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, LabelStatement))
+        s = cast(LabelStatement, s)
+        self.assertEqual(s.name.type, Tk.IDENT)
+        self.assertEqual(s.name.contents, "label")
+
+    def test_case_statement(self):
+        t = Tokens("", "case 3:")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, CaseStatement))
+        s = cast(CaseStatement, s)
+        self.assertTrue(isinstance(s.condition, ConstantExpression))
+        c = cast(ConstantExpression, s.condition)
+        self.assertTrue(c.value.type, Tk.CONST_INT)
+        self.assertTrue(c.value.number, 3)
+
+    def test_default_statement(self):
+        t = Tokens("", "default:")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, DefaultStatement))
+
+
+class TestExpressionStatement(TestCase):
+    def test_empty_statement(self):
+        t = Tokens("", "; 3;")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ExpressionStatement))
+        s = cast(ExpressionStatement, s)
+        self.assertTrue(isinstance(s.expression, ConstantExpression))
+        e = cast(ConstantExpression, s.expression)
+        self.assertTrue(e.value.type, Tk.CONST_INT)
+        self.assertTrue(e.value.number, 3)
+
+    def test_basic_expression(self):
+        t = Tokens("", "3 + 4;")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ExpressionStatement))
+        s = cast(ExpressionStatement, s)
+        self.assertTrue(isinstance(s.expression, BinaryExpression))
+        e = cast(BinaryExpression, s.expression)
+        self.assertTrue(isinstance(e.left, ConstantExpression))
+        self.assertTrue(isinstance(e.right, ConstantExpression))
+
+    def test_function_call(self):
+        t = Tokens("", "a();")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ExpressionStatement))
+        s = cast(ExpressionStatement, s)
+        self.assertTrue(isinstance(s.expression, FunctionCallExpression))
+        e = cast(FunctionCallExpression, s.expression)
+        self.assertTrue(isinstance(e.function, SymbolExpression))
+        self.assertEqual(len(e.args), 0)
+
+
+class TestSelectionStatement(TestCase):
+    def test_single_if(self):
+        t = Tokens("", "if (a) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, IfStatementChain))
+        s = cast(IfStatementChain, s)
+        self.assertEqual(len(s.chain), 1)
+        self.assertTrue(isinstance(s.chain[0], IfStatement))
+        s = cast(IfStatement, s.chain[0])
+        self.assertTrue(isinstance(s.condition, SymbolExpression))
+        self.assertTrue(isinstance(s.body, CompoundStatement))
+        s = cast(CompoundStatement, s.body)
+        self.assertEqual(len(s.statements), 0)
+
+    def test_else(self):
+        t = Tokens("", "if (a) {} else {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, IfStatementChain))
+        s = cast(IfStatementChain, s)
+        self.assertEqual(len(s.chain), 2)
+        self.assertTrue(isinstance(s.chain[0], IfStatement))
+        a = cast(IfStatement, s.chain[0])
+        self.assertTrue(isinstance(a.condition, SymbolExpression))
+        self.assertTrue(isinstance(a.body, CompoundStatement))
+        a = cast(CompoundStatement, a.body)
+        self.assertEqual(len(a.statements), 0)
+        b = cast(IfStatement, s.chain[1])
+        self.assertTrue(b.condition is None)
+        self.assertTrue(isinstance(b.body, CompoundStatement))
+        b = cast(CompoundStatement, b.body)
+        self.assertEqual(len(b.statements), 0)
+
+    def test_single_elseif(self):
+        t = Tokens("", "if (a) {} else if (b) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, IfStatementChain))
+        s = cast(IfStatementChain, s)
+        self.assertEqual(len(s.chain), 2)
+        self.assertTrue(isinstance(s.chain[0], IfStatement))
+        a = cast(IfStatement, s.chain[0])
+        self.assertTrue(isinstance(a.condition, SymbolExpression))
+        self.assertTrue(isinstance(a.body, CompoundStatement))
+        a = cast(CompoundStatement, a.body)
+        self.assertEqual(len(a.statements), 0)
+        b = cast(IfStatement, s.chain[1])
+        self.assertTrue(isinstance(b.condition, SymbolExpression))
+        self.assertTrue(isinstance(b.body, CompoundStatement))
+        b = cast(CompoundStatement, b.body)
+        self.assertEqual(len(b.statements), 0)
+
+    def test_multiple_elseifs(self):
+        t = Tokens("", "if (a) {} else if (b) {} else if (c) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, IfStatementChain))
+        s = cast(IfStatementChain, s)
+        self.assertEqual(len(s.chain), 3)
+        self.assertTrue(isinstance(s.chain[0], IfStatement))
+        a = cast(IfStatement, s.chain[0])
+        self.assertTrue(isinstance(a.condition, SymbolExpression))
+        self.assertTrue(isinstance(a.body, CompoundStatement))
+        a = cast(CompoundStatement, a.body)
+        self.assertEqual(len(a.statements), 0)
+        b = cast(IfStatement, s.chain[1])
+        self.assertTrue(isinstance(b.condition, SymbolExpression))
+        self.assertTrue(isinstance(b.body, CompoundStatement))
+        b = cast(CompoundStatement, b.body)
+        self.assertEqual(len(b.statements), 0)
+        c = cast(IfStatement, s.chain[2])
+        self.assertTrue(isinstance(c.condition, SymbolExpression))
+        self.assertTrue(isinstance(c.body, CompoundStatement))
+        c = cast(CompoundStatement, c.body)
+        self.assertEqual(len(c.statements), 0)
+
+    def test_elseif_else(self):
+        t = Tokens("", "if (a) {} else if (b) {} else {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, IfStatementChain))
+        s = cast(IfStatementChain, s)
+        self.assertEqual(len(s.chain), 3)
+        self.assertTrue(isinstance(s.chain[0], IfStatement))
+        a = cast(IfStatement, s.chain[0])
+        self.assertTrue(isinstance(a.condition, SymbolExpression))
+        self.assertTrue(isinstance(a.body, CompoundStatement))
+        a = cast(CompoundStatement, a.body)
+        self.assertEqual(len(a.statements), 0)
+        b = cast(IfStatement, s.chain[1])
+        self.assertTrue(isinstance(b.condition, SymbolExpression))
+        self.assertTrue(isinstance(b.body, CompoundStatement))
+        b = cast(CompoundStatement, b.body)
+        self.assertEqual(len(b.statements), 0)
+        c = cast(IfStatement, s.chain[2])
+        self.assertTrue(c.condition is None)
+        self.assertTrue(isinstance(c.body, CompoundStatement))
+        c = cast(CompoundStatement, c.body)
+        self.assertEqual(len(c.statements), 0)
+
+    def test_multiple_elseifs_else(self):
+        t = Tokens("", "if (a) {} else if (b) {} else if (c) {} else {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, IfStatementChain))
+        s = cast(IfStatementChain, s)
+        self.assertEqual(len(s.chain), 4)
+        self.assertTrue(isinstance(s.chain[0], IfStatement))
+        a = cast(IfStatement, s.chain[0])
+        self.assertTrue(isinstance(a.condition, SymbolExpression))
+        self.assertTrue(isinstance(a.body, CompoundStatement))
+        a = cast(CompoundStatement, a.body)
+        self.assertEqual(len(a.statements), 0)
+        b = cast(IfStatement, s.chain[1])
+        self.assertTrue(isinstance(b.condition, SymbolExpression))
+        self.assertTrue(isinstance(b.body, CompoundStatement))
+        b = cast(CompoundStatement, b.body)
+        self.assertEqual(len(b.statements), 0)
+        c = cast(IfStatement, s.chain[2])
+        self.assertTrue(isinstance(c.condition, SymbolExpression))
+        self.assertTrue(isinstance(c.body, CompoundStatement))
+        c = cast(CompoundStatement, c.body)
+        self.assertEqual(len(c.statements), 0)
+        d = cast(IfStatement, s.chain[3])
+        self.assertTrue(d.condition is None)
+        self.assertTrue(isinstance(d.body, CompoundStatement))
+        d = cast(CompoundStatement, d.body)
+        self.assertEqual(len(d.statements), 0)
+
+    def test_switch(self):
+        t = Tokens("", "switch (a) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, SwitchStatement))
+        s = cast(SwitchStatement, s)
+        self.assertTrue(isinstance(s.condition, SymbolExpression))
+        self.assertTrue(isinstance(s.body, CompoundStatement))
+        s = cast(CompoundStatement, s.body)
+        self.assertEqual(len(s.statements), 0)
+
+
+class TestIterationStatements(TestCase):
+    def test_while(self):
+        t = Tokens("", "while (a) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, WhileStatement))
+        s = cast(WhileStatement, s)
+        self.assertTrue(isinstance(s.condition, SymbolExpression))
+        self.assertTrue(isinstance(s.body, CompoundStatement))
+        s = cast(CompoundStatement, s.body)
+        self.assertEqual(len(s.statements), 0)
+
+    def test_do_while(self):
+        t = Tokens("", "do {} while (a);")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, DoWhileStatement))
+        s = cast(DoWhileStatement, s)
+        self.assertTrue(isinstance(s.condition, SymbolExpression))
+        self.assertTrue(isinstance(s.body, CompoundStatement))
+        s = cast(CompoundStatement, s.body)
+        self.assertEqual(len(s.statements), 0)
+
+    def test_for_with_declaration(self):
+        t = Tokens("", "for (int i = 3; i < 100; i++) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ForStatement))
+        s = cast(ForStatement, s)
+        self.assertTrue(isinstance(s.initializer, DeclarationList))
+        self.assertTrue(isinstance(s.condition, BinaryExpression))
+        self.assertTrue(isinstance(s.increment, PostfixExpression))
+        i = cast(DeclarationList, s.initializer)
+        self.assertEqual(len(i.declarations), 1)
+        i = cast(Declaration, s.initializer.declarations[0])
+        self.assertEqual(i.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(i.declarator.name.contents, "i")
+        self.assertEqual(len(i.declarator.parts), 0)
+        self.assertTrue(isinstance(i.initializer, ConstantExpression))
+        c = cast(BinaryExpression, s.condition)
+        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertTrue(isinstance(c.left, SymbolExpression))
+        self.assertTrue(isinstance(c.right, ConstantExpression))
+        i = cast(PostfixExpression, s.increment)
+        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertTrue(isinstance(i.operand, SymbolExpression))
+
+    def test_for_with_expression(self):
+        t = Tokens("", "for (i = 3; i < 100; i++) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ForStatement))
+        s = cast(ForStatement, s)
+        self.assertTrue(isinstance(s.initializer, BinaryExpression))
+        self.assertTrue(isinstance(s.condition, BinaryExpression))
+        self.assertTrue(isinstance(s.increment, PostfixExpression))
+        i = cast(BinaryExpression, s.initializer)
+        self.assertEqual(i.operator, BinaryOperator.ASSIGN)
+        self.assertTrue(isinstance(i.left, SymbolExpression))
+        self.assertTrue(isinstance(i.right, ConstantExpression))
+        c = cast(BinaryExpression, s.condition)
+        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertTrue(isinstance(c.left, SymbolExpression))
+        self.assertTrue(isinstance(c.right, ConstantExpression))
+        i = cast(PostfixExpression, s.increment)
+        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertTrue(isinstance(i.operand, SymbolExpression))
+
+    def test_for_missing_initializer(self):
+        t = Tokens("", "for (; i < 100; i++) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ForStatement))
+        s = cast(ForStatement, s)
+        self.assertTrue(s.initializer is None)
+        self.assertTrue(isinstance(s.condition, BinaryExpression))
+        self.assertTrue(isinstance(s.increment, PostfixExpression))
+        c = cast(BinaryExpression, s.condition)
+        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertTrue(isinstance(c.left, SymbolExpression))
+        self.assertTrue(isinstance(c.right, ConstantExpression))
+        i = cast(PostfixExpression, s.increment)
+        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertTrue(isinstance(i.operand, SymbolExpression))
+
+    def test_for_missing_condition(self):
+        t = Tokens("", "for (i = 3;; i++) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ForStatement))
+        s = cast(ForStatement, s)
+        self.assertTrue(isinstance(s.initializer, BinaryExpression))
+        self.assertTrue(s.condition is None)
+        self.assertTrue(isinstance(s.increment, PostfixExpression))
+        i = cast(BinaryExpression, s.initializer)
+        self.assertEqual(i.operator, BinaryOperator.ASSIGN)
+        self.assertTrue(isinstance(i.left, SymbolExpression))
+        self.assertTrue(isinstance(i.right, ConstantExpression))
+        i = cast(PostfixExpression, s.increment)
+        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertTrue(isinstance(i.operand, SymbolExpression))
+
+    def test_for_missing_increment(self):
+        t = Tokens("", "for (i = 3; i < 100;) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ForStatement))
+        s = cast(ForStatement, s)
+        self.assertTrue(isinstance(s.initializer, BinaryExpression))
+        self.assertTrue(isinstance(s.condition, BinaryExpression))
+        self.assertTrue(s.increment is None)
+        i = cast(BinaryExpression, s.initializer)
+        self.assertEqual(i.operator, BinaryOperator.ASSIGN)
+        self.assertTrue(isinstance(i.left, SymbolExpression))
+        self.assertTrue(isinstance(i.right, ConstantExpression))
+        c = cast(BinaryExpression, s.condition)
+        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertTrue(isinstance(c.left, SymbolExpression))
+        self.assertTrue(isinstance(c.right, ConstantExpression))
+
+    def test_for_missing_everything(self):
+        t = Tokens("", "for (;;) {}")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ForStatement))
+        s = cast(ForStatement, s)
+        self.assertTrue(s.initializer is None)
+        self.assertTrue(s.condition is None)
+        self.assertTrue(s.increment is None)
+
+
+class TestJumpStatements(TestCase):
+    def test_goto(self):
+        t = Tokens("", "goto label;")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, GotoStatement))
+        s = cast(GotoStatement, s)
+        self.assertEqual(s.name.type, Tk.IDENT)
+        self.assertEqual(s.name.contents, "label")
+
+    def test_continue(self):
+        t = Tokens("", "continue;")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ContinueStatement))
+
+    def test_break(self):
+        t = Tokens("", "break;")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, BreakStatement))
+
+    def test_return_nothing(self):
+        t = Tokens("", "return;")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ReturnStatement))
+        s = cast(ReturnStatement, s)
+        self.assertTrue(s.result is None)
+
+    def test_return_expression(self):
+        t = Tokens("", "return 3;")
+        p = Parser(t)
+        s = p.parse_statement()
+        self.assertTrue(isinstance(s, ReturnStatement))
+        s = cast(ReturnStatement, s)
+        self.assertTrue(isinstance(s.result, ConstantExpression))
+
+
+if __name__ == "__main__":
     unittest.main()

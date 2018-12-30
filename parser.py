@@ -4,7 +4,7 @@
 # December 2018
 
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Union
 from enum import Enum
 
 from lexer import Tokens, Token, Tk
@@ -21,6 +21,17 @@ class Node:
 # ******************************************************************************
 #     Declarators
 # ******************************************************************************
+
+
+class DeclarationList(Node):
+    """
+    Multiple declarations can occur after one set of declaration specifiers.
+    This node stores a list of declarations.
+    """
+
+    def __init__(self, declarations):
+        super().__init__()
+        self.declarations = declarations
 
 
 class Declaration(Node):
@@ -440,7 +451,7 @@ class DeclarationStatement(Statement):
     of declaration specifiers.
     """
 
-    def __init__(self, declarations: list):
+    def __init__(self, declarations: DeclarationList):
         super().__init__()
         self.declarations = declarations
 
@@ -544,8 +555,8 @@ class ForStatement(Statement):
     expression.
     """
 
-    def __init__(self, initializer, condition: Expression,
-                 increment: Expression, body: Statement):
+    def __init__(self, initializer: Union[DeclarationList, Expression],
+                 condition: Expression, increment: Expression, body: Statement):
         super().__init__()
         self.initializer = initializer
         self.condition = condition
@@ -699,10 +710,511 @@ class Parser:
             self.t.next()
 
     # **************************************************************************
+    #     Statement Parsing
+    # **************************************************************************
+
+    def parse_compound_statement(self) -> CompoundStatement:
+        """
+        Parse a list of statements surrounded by braces. The relevant grammar
+        is:
+
+          compound_statement
+            : '{' '}'
+            | '{'  block_item_list '}'
+
+          block_item_list
+            : block_item
+            | block_item_list block_item
+
+        :return: A list of statements.
+        """
+        # Opening brace
+        self.t.expect(Tk.OPEN_BRACE)
+        self.t.next()
+
+        # Parse a list of statements
+        statements = []
+        while self.t.cur().type != Tk.EOF and \
+                self.t.cur().type != Tk.CLOSE_BRACE:
+            statement = self.parse_statement()
+            statements.append(statement)
+
+        # Closing brace
+        self.t.expect(Tk.CLOSE_BRACE)
+        self.t.next()
+        return CompoundStatement(statements)
+
+    def parse_statement(self) -> Statement:
+        """
+        Parse a single statement (called a 'block_item' in the grammar). The
+        relevant grammar is:
+
+          block_item
+            : declaration
+            | statement
+
+          statement
+            : labeled_statement
+            | compound_statement
+            | expression_statement
+            | selection_statement
+            | iteration_statement
+            | jump_statement
+
+          labeled_statement
+            : IDENTIFIER ':' statement
+            | CASE constant_expression ':' statement
+            | DEFAULT ':' statement
+
+          expression_statement
+            : ';'
+            | expression ';'
+
+          selection_statement
+            : IF '(' expression ')' statement ELSE statement
+            | IF '(' expression ')' statement
+            | SWITCH '(' expression ')' statement
+
+          iteration_statement
+            : WHILE '(' expression ')' statement
+            | DO statement WHILE '(' expression ')' ';'
+            | FOR '(' expression_statement expression_statement ')' statement
+            | FOR '(' expression_statement expression_statement expression ')'
+                statement
+            | FOR '(' declaration expression_statement ')' statement
+            | FOR '(' declaration expression_statement expression ')' statement
+
+          jump_statement
+            : GOTO IDENTIFIER ';'
+            | CONTINUE ';'
+            | BREAK ';'
+            | RETURN ';'
+            | RETURN expression ';'
+
+        :return: A statement object.
+        """
+        if self.t.cur().type == Tk.IDENT and self.t.peek(1).type == Tk.COLON:
+            return self.parse_labelled_statement()
+        elif self.t.cur().type == Tk.CASE:
+            return self.parse_case_statement()
+        elif self.t.cur().type == Tk.DEFAULT:
+            return self.parse_default_statement()
+        elif self.t.cur().type == Tk.OPEN_BRACE:
+            return self.parse_compound_statement()
+        elif self.t.cur().type == Tk.IF:
+            return self.parse_if_statement()
+        elif self.t.cur().type == Tk.SWITCH:
+            return self.parse_switch_statement()
+        elif self.t.cur().type == Tk.WHILE:
+            return self.parse_while_statement()
+        elif self.t.cur().type == Tk.DO:
+            return self.parse_do_while_statement()
+        elif self.t.cur().type == Tk.FOR:
+            return self.parse_for_statement()
+        elif self.t.cur().type == Tk.GOTO:
+            return self.parse_goto_statement()
+        elif self.t.cur().type == Tk.CONTINUE:
+            return self.parse_continue_statement()
+        elif self.t.cur().type == Tk.BREAK:
+            return self.parse_break_statement()
+        elif self.t.cur().type == Tk.RETURN:
+            return self.parse_return_statement()
+        elif self.t.cur().type in BUILT_IN_TYPE_TOKENS:
+            return self.parse_declaration_statement()
+        elif self.t.cur().type == Tk.SEMICOLON:  # Ignore random semicolons
+            self.t.next()  # Skip the semicolon
+            return self.parse_statement()
+        else:
+            return self.parse_expression_statement()
+
+    def parse_labelled_statement(self) -> LabelStatement:
+        """
+        Parse a statement preceded by a label. The relevant grammar is:
+
+          labeled_statement
+            : IDENTIFIER ':' statement
+            ...
+
+        :return: A labelled statement.
+        """
+        # Expect an identifier
+        self.t.expect(Tk.IDENT)
+        name = self.t.cur()
+        self.t.next()
+
+        # Expect a colon
+        self.t.expect(Tk.COLON)
+        self.t.next()
+        return LabelStatement(name)
+
+    def parse_case_statement(self) -> CaseStatement:
+        """
+        Parse a case statement. The relevant grammar is:
+
+          labeled_statement
+            ...
+            | CASE constant_expression ':' statement
+            ...
+
+        :return: A case statement.
+        """
+        # Expect a case keyword
+        self.t.expect(Tk.CASE)
+        self.t.next()
+
+        # Parse the following expression
+        condition = self.parse_expression_root()
+
+        # Expect a colon
+        self.t.expect(Tk.COLON)
+        self.t.next()
+        return CaseStatement(condition)
+
+    def parse_default_statement(self) -> DefaultStatement:
+        """
+        Parse a default statement. The relevant grammar is:
+
+          labeled_statement
+            ...
+            | DEFAULT ':' statement
+
+        :return: A case statement.
+        """
+        # Expect a default keyword
+        self.t.expect(Tk.DEFAULT)
+        self.t.next()
+
+        # Expect a colon
+        self.t.expect(Tk.COLON)
+        self.t.next()
+        return DefaultStatement()
+
+    def parse_if_statement(self) -> IfStatementChain:
+        """
+        Parse an if statement. The relevant grammar is:
+
+          selection_statement
+            : IF '(' expression ')' statement ELSE statement
+            | IF '(' expression ')' statement
+            ...
+
+        :return: An if statement.
+        """
+        # We represent an if statement and any following else if or else
+        # clauses as an 'IfStatementChain'
+        chain = []
+
+        # Parse the initial 'if' clause
+        self.t.expect(Tk.IF)
+        statement = self.parse_if_clause()
+        chain.append(statement)
+
+        # Check for else ifs
+        while self.t.cur().type == Tk.ELSE:
+            # Check for an else if
+            if self.t.peek(1).type == Tk.IF:
+                # Skip the 'else' token to land on the 'if'
+                self.t.next()
+            type = self.t.cur().type
+
+            # Add a new element to the chain
+            statement = self.parse_if_clause()
+            chain.append(statement)
+
+            # Stop if we've reached an 'else' statement
+            if type == Tk.ELSE:
+                break
+        return IfStatementChain(chain)
+
+    def parse_if_clause(self) -> IfStatement:
+        """
+        Parses a single if, else if, or else clause within an if statement
+        chain.
+
+        :return: An if, else if, or else clause.
+        """
+        # Skip the 'if' or 'else' token
+        type = self.t.cur().type
+        self.t.next()
+
+        condition = None
+        if type == Tk.IF:
+            # Expect an expression surrounded by parentheses
+            self.t.expect(Tk.OPEN_PAREN)
+            self.t.next()
+            condition = self.parse_expression()
+            self.t.expect(Tk.CLOSE_PAREN)
+            self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return IfStatement(condition, body)
+
+    def parse_switch_statement(self) -> SwitchStatement:
+        """
+        Parse a switch statement. The relevant grammar is:
+
+          selection_statement
+            ...
+            | SWITCH '(' expression ')' statement
+
+        :return: A switch statement.
+        """
+        # Skip the switch token
+        self.t.expect(Tk.SWITCH)
+        self.t.next()
+
+        # Expect an expression surrounded by parentheses
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+        condition = self.parse_expression()
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return SwitchStatement(condition, body)
+
+    def parse_while_statement(self) -> WhileStatement:
+        """
+        Parse a while statement. The relevant grammar is:
+
+          iteration_statement
+            : WHILE '(' expression ')' statement
+            ...
+
+        :return: A while statement.
+        """
+        # Skip the while token
+        self.t.expect(Tk.WHILE)
+        self.t.next()
+
+        # Expect an expression surrounded by parentheses
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+        condition = self.parse_expression()
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return WhileStatement(condition, body)
+
+    def parse_do_while_statement(self) -> DoWhileStatement:
+        """
+        Parse a do while statement. The relevant grammar is:
+
+          iteration_statement
+            ...
+            | DO statement WHILE '(' expression ')' ';'
+            ...
+
+        :return: A do while statement.
+        """
+        # Skip the do token
+        self.t.expect(Tk.DO)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+
+        # Expect a while token
+        self.t.expect(Tk.WHILE)
+        self.t.next()
+
+        # Expect an expression in parentheses, concluded by a semicolon
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+        condition = self.parse_expression()
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return DoWhileStatement(condition, body)
+
+    def parse_for_statement(self) -> ForStatement:
+        """
+        Parse a for statement. The relevant grammar is:
+
+          iteration_statement
+            ...
+            | FOR '(' expression_statement expression_statement ')' statement
+            | FOR '(' expression_statement expression_statement expression ')'
+                statement
+            | FOR '(' declaration expression_statement ')' statement
+            | FOR '(' declaration expression_statement expression ')' statement
+
+        :return: A for statement.
+        """
+        # Skip the for token
+        self.t.expect(Tk.FOR)
+        self.t.next()
+
+        # Expect an open parenthesis
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+
+        # Check if we've got a declaration or an expression
+        initializer = None
+        if self.t.cur().type in BUILT_IN_TYPE_TOKENS:
+            # Parses the terminating semicolon for us
+            initializer = self.parse_declarations()
+        elif self.t.cur().type != Tk.SEMICOLON:
+            # Parse an expression
+            initializer = self.parse_expression()
+
+            # Expect a semicolon
+            self.t.expect(Tk.SEMICOLON)
+            self.t.next()
+        else:
+            # Have just a semicolon
+            self.t.next()
+
+        # Check for a condition
+        condition = None
+        if self.t.cur().type != Tk.SEMICOLON:
+            condition = self.parse_expression()
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+
+        # Check for an increment
+        increment = None
+        if self.t.cur().type != Tk.CLOSE_PAREN:
+            increment = self.parse_expression()
+
+        # Expect a close parenthesis
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return ForStatement(initializer, condition, increment, body)
+
+    def parse_goto_statement(self) -> GotoStatement:
+        """
+        Parse a goto statement. The relevant grammar is:
+
+          jump_statement
+            : GOTO IDENTIFIER ';'
+            ...
+
+        :return: A goto statement.
+        """
+        # Expect a goto token
+        self.t.expect(Tk.GOTO)
+        self.t.next()
+
+        # Expect an identifier
+        self.t.expect(Tk.IDENT)
+        name = self.t.cur()
+        self.t.next()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return GotoStatement(name)
+
+    def parse_continue_statement(self) -> ContinueStatement:
+        """
+        Parse a continue statement. The relevant grammar is:
+
+          jump_statement
+            ...
+            | CONTINUE ';'
+            ...
+
+        :return: A continue statement.
+        """
+        # Expect a continue token
+        self.t.expect(Tk.CONTINUE)
+        self.t.next()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return ContinueStatement()
+
+    def parse_break_statement(self) -> BreakStatement:
+        """
+        Parse a break statement. The relevant grammar is:
+
+          jump_statement
+            ...
+            | BREAK ';'
+            ...
+
+        :return: A break statement.
+        """
+        # Expect a break token
+        self.t.expect(Tk.BREAK)
+        self.t.next()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return BreakStatement()
+
+    def parse_return_statement(self) -> ReturnStatement:
+        """
+        Parse a return statement. The relevant grammar is:
+
+          jump_statement
+            ...
+            | RETURN ';'
+            | RETURN expression ';'
+
+        :return: A return statement.
+        """
+        # Expect a return token
+        self.t.expect(Tk.RETURN)
+        self.t.next()
+
+        # Check for an expression
+        result = None
+        if self.t.cur().type != Tk.SEMICOLON:
+            result = self.parse_expression()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return ReturnStatement(result)
+
+    def parse_declaration_statement(self) -> DeclarationStatement:
+        """
+        Parse a declaration statement. The relevant grammar is:
+
+          block_item
+            : declaration
+            ...
+
+        :return: A declaration statement.
+        """
+        declarations = self.parse_declarations()
+        return DeclarationStatement(declarations)
+
+    def parse_expression_statement(self) -> ExpressionStatement:
+        """
+        Parse an expression statement. The relevant grammar is:
+
+          expression_statement
+            : ';'
+            | expression ';'
+
+        :return: An expression statement.
+        """
+        # Parse an expression
+        expression = self.parse_expression()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return ExpressionStatement(expression)
+
+    # **************************************************************************
     #     Declaration Parsing
     # **************************************************************************
 
-    def parse_declarations(self) -> list:
+    def parse_declarations(self) -> DeclarationList:
         """
         Parse a list of declarations. The relevant grammar is:
 
@@ -771,7 +1283,7 @@ class Parser:
         # Expect a semicolon
         self.t.expect(Tk.SEMICOLON)
         self.t.next()
-        return declarations
+        return DeclarationList(declarations)
 
     def parse_type(self) -> TypeName:
         """
@@ -1505,501 +2017,6 @@ class Parser:
             # Expected expression error
             raise Error("expected expression", self.t.cur())
         return result
-
-    # **************************************************************************
-    #     Statement Parsing
-    # **************************************************************************
-
-    def parse_compound_statement(self) -> CompoundStatement:
-        """
-        Parse a list of statements surrounded by braces. The relevant grammar
-        is:
-
-          compound_statement
-            : '{' '}'
-            | '{'  block_item_list '}'
-
-          block_item_list
-            : block_item
-            | block_item_list block_item
-
-        :return: A list of statements.
-        """
-        # Opening brace
-        self.t.expect(Tk.OPEN_BRACE)
-        self.t.next()
-
-        # Parse a list of statements
-        statements = []
-        while self.t.cur().type != Tk.EOF and \
-                self.t.cur().type != Tk.CLOSE_BRACE:
-            statement = self.parse_statement()
-            statements.append(statement)
-
-        # Closing brace
-        self.t.expect(Tk.CLOSE_BRACE)
-        self.t.next()
-        return CompoundStatement(statements)
-
-    def parse_statement(self) -> Statement:
-        """
-        Parse a single statement (called a 'block_item' in the grammar). The
-        relevant grammar is:
-
-          block_item
-            : declaration
-            | statement
-
-          statement
-            : labeled_statement
-            | compound_statement
-            | expression_statement
-            | selection_statement
-            | iteration_statement
-            | jump_statement
-
-          labeled_statement
-            : IDENTIFIER ':' statement
-            | CASE constant_expression ':' statement
-            | DEFAULT ':' statement
-
-          expression_statement
-            : ';'
-            | expression ';'
-
-          selection_statement
-            : IF '(' expression ')' statement ELSE statement
-            | IF '(' expression ')' statement
-            | SWITCH '(' expression ')' statement
-
-          iteration_statement
-            : WHILE '(' expression ')' statement
-            | DO statement WHILE '(' expression ')' ';'
-            | FOR '(' expression_statement expression_statement ')' statement
-            | FOR '(' expression_statement expression_statement expression ')'
-                statement
-            | FOR '(' declaration expression_statement ')' statement
-            | FOR '(' declaration expression_statement expression ')' statement
-
-          jump_statement
-            : GOTO IDENTIFIER ';'
-            | CONTINUE ';'
-            | BREAK ';'
-            | RETURN ';'
-            | RETURN expression ';'
-
-        :return: A statement object.
-        """
-        if self.t.cur().type == Tk.IDENT and self.t.peek(1).type == Tk.COLON:
-            return self.parse_labeled_statement()
-        elif self.t.cur().type == Tk.CASE:
-            return self.parse_case_statement()
-        elif self.t.cur().type == Tk.DEFAULT:
-            return self.parse_default_statement()
-        elif self.t.cur().type == Tk.OPEN_BRACE:
-            return self.parse_compound_statement()
-        elif self.t.cur().type == Tk.SEMICOLON:  # Ignore random semicolons
-            self.t.next()  # Skip the semicolon
-            return self.parse_statement()
-        elif self.t.cur().type == Tk.IF:
-            return self.parse_if_statement()
-        elif self.t.cur().type == Tk.SWITCH:
-            return self.parse_switch_statement()
-        elif self.t.cur().type == Tk.WHILE:
-            return self.parse_while_statement()
-        elif self.t.cur().type == Tk.DO:
-            return self.parse_do_while_statement()
-        elif self.t.cur().type == Tk.FOR:
-            return self.parse_for_statement()
-        elif self.t.cur().type == Tk.GOTO:
-            return self.parse_goto_statement()
-        elif self.t.cur().type == Tk.CONTINUE:
-            return self.parse_continue_statement()
-        elif self.t.cur().type == Tk.BREAK:
-            return self.parse_break_statement()
-        elif self.t.cur().type == Tk.RETURN:
-            return self.parse_return_statement()
-        elif self.t.cur().type in BUILT_IN_TYPE_TOKENS:
-            return self.parse_declaration_statement()
-        else:
-            return self.parse_expression_statement()
-
-    def parse_labeled_statement(self) -> LabelStatement:
-        """
-        Parse a statement preceded by a label. The relevant grammar is:
-
-          labeled_statement
-            : IDENTIFIER ':' statement
-            ...
-
-        :return: A labelled statement.
-        """
-        # Expect an identifier
-        self.t.expect(Tk.IDENT)
-        name = self.t.cur()
-        self.t.next()
-
-        # Expect a colon
-        self.t.expect(Tk.COLON)
-        self.t.next()
-        return LabelStatement(name)
-
-    def parse_case_statement(self) -> CaseStatement:
-        """
-        Parse a case statement. The relevant grammar is:
-
-          labeled_statement
-            ...
-            | CASE constant_expression ':' statement
-            ...
-
-        :return: A case statement.
-        """
-        # Expect a case keyword
-        self.t.expect(Tk.CASE)
-        self.t.next()
-
-        # Parse the following expression
-        condition = self.parse_expression_root()
-
-        # Expect a colon
-        self.t.expect(Tk.COLON)
-        self.t.next()
-        return CaseStatement(condition)
-
-    def parse_default_statement(self) -> DefaultStatement:
-        """
-        Parse a default statement. The relevant grammar is:
-
-          labeled_statement
-            ...
-            | DEFAULT ':' statement
-
-        :return: A case statement.
-        """
-        # Expect a default keyword
-        self.t.expect(Tk.DEFAULT)
-        self.t.next()
-
-        # Expect a colon
-        self.t.expect(Tk.COLON)
-        self.t.next()
-        return DefaultStatement()
-
-    def parse_if_statement(self) -> IfStatementChain:
-        """
-        Parse an if statement. The relevant grammar is:
-
-          selection_statement
-            : IF '(' expression ')' statement ELSE statement
-            | IF '(' expression ')' statement
-            ...
-
-        :return: An if statement.
-        """
-        # We represent an if statement and any following else if or else
-        # clauses as an 'IfStatementChain'
-        chain = []
-
-        # Parse the initial 'if' clause
-        self.t.expect(Tk.IF)
-        statement = self.parse_if_clause()
-        chain.append(statement)
-
-        # Check for else ifs
-        while self.t.cur().type == Tk.ELSE:
-            # Check for an else if
-            if self.t.peek(1).type == Tk.IF:
-                # Skip the 'else' token to land on the 'if'
-                self.t.next()
-            type = self.t.cur().type
-
-            # Add a new element to the chain
-            statement = self.parse_if_clause()
-            chain.append(statement)
-
-            # Stop if we've reached an 'else' statement
-            if type == Tk.ELSE:
-                break
-        return IfStatementChain(chain)
-
-    def parse_if_clause(self) -> IfStatement:
-        """
-        Parses a single if, else if, or else clause within an if statement
-        chain.
-
-        :return: An if, else if, or else clause.
-        """
-        # Skip the 'if' or 'else' token
-        type = self.t.cur().type
-        self.t.next()
-
-        condition = None
-        if type == Tk.IF:
-            # Expect an expression surrounded by parentheses
-            self.t.expect(Tk.OPEN_PAREN)
-            self.t.next()
-            condition = self.parse_expression()
-            self.t.expect(Tk.CLOSE_PAREN)
-            self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return IfStatement(condition, body)
-
-    def parse_switch_statement(self) -> SwitchStatement:
-        """
-        Parse a switch statement. The relevant grammar is:
-
-          selection_statement
-            ...
-            | SWITCH '(' expression ')' statement
-
-        :return: A switch statement.
-        """
-        # Skip the switch token
-        self.t.expect(Tk.SWITCH)
-        self.t.next()
-
-        # Expect an expression surrounded by parentheses
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-        condition = self.parse_expression()
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return SwitchStatement(condition, body)
-
-    def parse_while_statement(self) -> WhileStatement:
-        """
-        Parse a while statement. The relevant grammar is:
-
-          iteration_statement
-            : WHILE '(' expression ')' statement
-            ...
-
-        :return: A while statement.
-        """
-        # Skip the while token
-        self.t.expect(Tk.WHILE)
-        self.t.next()
-
-        # Expect an expression surrounded by parentheses
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-        condition = self.parse_expression()
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return WhileStatement(condition, body)
-
-    def parse_do_while_statement(self) -> DoWhileStatement:
-        """
-        Parse a do while statement. The relevant grammar is:
-
-          iteration_statement
-            ...
-            | DO statement WHILE '(' expression ')' ';'
-            ...
-
-        :return: A do while statement.
-        """
-        # Skip the do token
-        self.t.expect(Tk.DO)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-
-        # Expect a while token
-        self.t.expect(Tk.WHILE)
-        self.t.next()
-
-        # Expect an expression in parentheses, concluded by a semicolon
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-        condition = self.parse_expression()
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return DoWhileStatement(condition, body)
-
-    def parse_for_statement(self) -> ForStatement:
-        """
-        Parse a for statement. The relevant grammar is:
-
-          iteration_statement
-            ...
-            | FOR '(' expression_statement expression_statement ')' statement
-            | FOR '(' expression_statement expression_statement expression ')'
-                statement
-            | FOR '(' declaration expression_statement ')' statement
-            | FOR '(' declaration expression_statement expression ')' statement
-
-        :return: A for statement.
-        """
-        # Skip the for token
-        self.t.expect(Tk.FOR)
-        self.t.next()
-
-        # Expect an open parenthesis
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-
-        # Check if we've got a declaration or an expression
-        initializer = None
-        if self.t.cur().type in BUILT_IN_TYPE_TOKENS:
-            initializer = self.parse_declarations()
-        elif self.t.cur().type != Tk.SEMICOLON:
-            initializer = self.parse_expression()
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-
-        # Check for a condition
-        condition = None
-        if self.t.cur().type != Tk.SEMICOLON:
-            condition = self.parse_expression()
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-
-        # Check for an increment
-        increment = None
-        if self.t.cur().type != Tk.CLOSE_PAREN:
-            increment = self.parse_expression()
-
-        # Expect a close parenthesis
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return ForStatement(initializer, condition, increment, body)
-
-    def parse_goto_statement(self) -> GotoStatement:
-        """
-        Parse a goto statement. The relevant grammar is:
-
-          jump_statement
-            : GOTO IDENTIFIER ';'
-            ...
-
-        :return: A goto statement.
-        """
-        # Expect a goto token
-        self.t.expect(Tk.GOTO)
-        self.t.next()
-
-        # Expect an identifier
-        self.t.expect(Tk.IDENT)
-        name = self.t.cur()
-        self.t.next()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return GotoStatement(name)
-
-    def parse_continue_statement(self) -> ContinueStatement:
-        """
-        Parse a continue statement. The relevant grammar is:
-
-          jump_statement
-            ...
-            | CONTINUE ';'
-            ...
-
-        :return: A continue statement.
-        """
-        # Expect a continue token
-        self.t.expect(Tk.CONTINUE)
-        self.t.next()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return ContinueStatement()
-
-    def parse_break_statement(self) -> BreakStatement:
-        """
-        Parse a break statement. The relevant grammar is:
-
-          jump_statement
-            ...
-            | BREAK ';'
-            ...
-
-        :return: A break statement.
-        """
-        # Expect a break token
-        self.t.expect(Tk.BREAK)
-        self.t.next()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return BreakStatement()
-
-    def parse_return_statement(self) -> ReturnStatement:
-        """
-        Parse a return statement. The relevant grammar is:
-
-          jump_statement
-            ...
-            | RETURN ';'
-            | RETURN expression ';'
-
-        :return: A return statement.
-        """
-        # Expect a return token
-        self.t.expect(Tk.RETURN)
-        self.t.next()
-
-        # Check for an expression
-        result = None
-        if self.t.cur().type != Tk.SEMICOLON:
-            result = self.parse_expression()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return ReturnStatement(result)
-
-    def parse_declaration_statement(self) -> DeclarationStatement:
-        """
-        Parse a declaration statement. The relevant grammar is:
-
-          block_item
-            : declaration
-            ...
-
-        :return: A declaration statement.
-        """
-        # Parse a list of declarations and convert each to a statement
-        declarations = self.parse_declarations()
-        return DeclarationStatement(declarations)
-
-    def parse_expression_statement(self) -> ExpressionStatement:
-        """
-        Parse an expression statement. The relevant grammar is:
-
-          expression_statement
-            : ';'
-            | expression ';'
-
-        :return: An expression statement.
-        """
-        # Parse an expression
-        expression = self.parse_expression()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return ExpressionStatement(expression)
 
 
 """

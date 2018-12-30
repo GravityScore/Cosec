@@ -638,5 +638,5 @@ class TestFloats(TestCase):
         self.assertEqual(t.cur().type, Tk.EOF)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

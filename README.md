@@ -1,6 +1,5 @@
 
-The Cosec C Compiler
---------------------
+# The Cosec C Compiler
 
 Cosec is a toy optimising C compiler, written in Python. My goals for the 
 project are:
@@ -17,7 +16,7 @@ project are:
 Cosec is unique because it's one of the only hobby compilers to implement 
 complex optimisations only using an SSA form intermediate representation.
 
-## Architecture Overview
+### Architecture Overview
 
 The major components of Cosec are:
 
@@ -36,7 +35,7 @@ The major components of Cosec are:
 * **Linker**: links a list of object files together into a final executable. 
   Cosec uses the GNU linker on OSX and Linux.
 
-## Usage
+### Usage
 
 Cosec has no dependencies, so running the compiler is as easy as:
 
@@ -52,6 +51,6 @@ $ python cosec.py --help
 
 Note that Python 3.7 is the minimum required version.
 
-## License
+### License
 
 Cosec is under the MIT license. See the `LICENSE` file for more details.

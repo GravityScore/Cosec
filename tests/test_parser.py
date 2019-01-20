@@ -9,7 +9,8 @@ from typing import cast
 
 from lexer import Tokens, Tk
 from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier,        \
-    FunctionSpecifier, DeclaratorPointerPart, DeclaratorFunctionPart,         \
+    FunctionSpecifier, StructSpecifier, UnionSpecifier, EnumSpecifier,        \
+    EnumConst, DeclaratorPointerPart, DeclaratorFunctionPart,                 \
     DeclaratorArrayPart, DeclarationList, Declaration
 from parser import ExpressionList, TernaryExpression, BinaryExpression,       \
     CastExpression, SizeofExpression, UnaryExpression, PostfixExpression,     \
@@ -618,6 +619,107 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(len(d.parts[3].args), 1)
 
 
+class TestTypedef(TestCase):
+    def test_basic(self):
+        t = Tokens("", "typedef int a; a b;")
+        p = Parser(t)
+        p.push_scope()
+        d = p.parse_declaration_list()
+        self.assertEqual(len(d.declarations), 1)
+        d = d.declarations[0]
+        self.assertEqual(d.specifiers.storage_class, StorageClass.TYPEDEF)
+        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.declarator.name.contents, "a")
+
+        d = p.parse_declaration_list()
+        self.assertEqual(len(d.declarations), 1)
+        d = d.declarations[0]
+        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.TYPEDEF)
+        self.assertEqual(d.specifiers.type_specifier.typedef_name, "a")
+        self.assertEqual(d.declarator.name.contents, "b")
+        p.pop_scope()
+
+
+class TestStructSpecifier(TestCase):
+    def test_struct(self):
+        t = Tokens("", "struct thing { int a; }")
+        p = Parser(t)
+        s = p.parse_declaration_specifiers()
+        self.assertEqual(s.type_specifier, TypeSpecifier.STRUCT)
+        s = cast(StructSpecifier, s.type_specifier.struct)
+        self.assertEqual(s.name.contents, "thing")
+        self.assertEqual(len(s.fields), 1)
+        d = cast(Declaration, s.fields[0])
+        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.declarator.name.contents, "a")
+
+    def test_anonymous_struct(self):
+        t = Tokens("", "struct { int a; }")
+        p = Parser(t)
+        s = p.parse_declaration_specifiers()
+        self.assertEqual(s.type_specifier, TypeSpecifier.STRUCT)
+        s = cast(StructSpecifier, s.type_specifier.struct)
+        self.assertTrue(s.name is None)
+        self.assertEqual(len(s.fields), 1)
+        d = cast(Declaration, s.fields[0])
+        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.declarator.name.contents, "a")
+
+    def test_incomplete_struct(self):
+        t = Tokens("", "struct thing")
+        p = Parser(t)
+        s = p.parse_declaration_specifiers()
+        self.assertEqual(s.type_specifier, TypeSpecifier.STRUCT)
+        s = cast(StructSpecifier, s.type_specifier.struct)
+        self.assertEqual(s.name.contents, "thing")
+        self.assertTrue(s.fields is None)
+
+    def test_union(self):
+        t = Tokens("", "union thing { int a; }")
+        p = Parser(t)
+        s = p.parse_declaration_specifiers()
+        self.assertEqual(s.type_specifier, TypeSpecifier.UNION)
+        s = cast(UnionSpecifier, s.type_specifier.union)
+        self.assertEqual(s.name.contents, "thing")
+        self.assertEqual(len(s.fields), 1)
+        d = cast(Declaration, s.fields[0])
+        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.declarator.name.contents, "a")
+
+
+class TestEnumSpecifier(TestCase):
+    def test_enum(self):
+        t = Tokens("", "enum thing { THING1, THING2 }")
+        p = Parser(t)
+        d = p.parse_declaration_specifiers()
+        self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
+        e = cast(EnumSpecifier, d.type_specifier.enum)
+        self.assertEqual(e.name.contents, "thing")
+        self.assertEqual(len(e.enum_consts), 2)
+        self.assertEqual(e.enum_consts[0].name.contents, "THING1")
+        self.assertEqual(e.enum_consts[1].name.contents, "THING2")
+
+    def test_anonymous_enum(self):
+        t = Tokens("", "enum { THING1, THING2 }")
+        p = Parser(t)
+        d = p.parse_declaration_specifiers()
+        self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
+        e = cast(EnumSpecifier, d.type_specifier.enum)
+        self.assertTrue(e.name is None)
+        self.assertEqual(len(e.enum_consts), 2)
+        self.assertEqual(e.enum_consts[0].name.contents, "THING1")
+        self.assertEqual(e.enum_consts[1].name.contents, "THING2")
+
+    def test_incomplete_enum(self):
+        t = Tokens("", "enum thing")
+        p = Parser(t)
+        d = p.parse_declaration_specifiers()
+        self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
+        e = cast(EnumSpecifier, d.type_specifier.enum)
+        self.assertEqual(e.name.contents, "thing")
+        self.assertTrue(e.enum_consts is None)
+
+
 # ******************************************************************************
 #     Expression Tests
 # ******************************************************************************
@@ -768,8 +870,8 @@ class TestSizeofExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, SizeofExpression))
         e = cast(SizeofExpression, e)
-        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
-        self.assertTrue(e.type.declarator is None)
+        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertTrue(e.declarator is None)
 
     def test_sizeof_with_declarator(self):
         t = Tokens("", "sizeof(int *)")
@@ -777,8 +879,8 @@ class TestSizeofExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, SizeofExpression))
         e = cast(SizeofExpression, e)
-        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
-        d = e.type.declarator
+        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        d = e.declarator
         self.assertTrue(d.name is None)
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
@@ -897,8 +999,8 @@ class TestCastExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, CastExpression))
         e = cast(CastExpression, e)
-        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
-        self.assertTrue(e.type.declarator is None)
+        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertTrue(e.declarator is None)
         self.assertTrue(isinstance(e.operand, ConstantExpression))
         e = cast(ConstantExpression, e.operand)
         self.assertEqual(e.value.type, Tk.CONST_INT)
@@ -910,8 +1012,8 @@ class TestCastExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, CastExpression))
         e = cast(CastExpression, e)
-        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.INT)
-        d = e.type.declarator
+        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        d = e.declarator
         self.assertTrue(d.name is None)
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))

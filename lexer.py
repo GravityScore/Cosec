@@ -692,6 +692,18 @@ class Token:
         self.length = length
         self.contents = self.source[self.start:self.start + length]
 
+    def name(self) -> str:
+        """
+        :return: A printable name for the token.
+        """
+        if self.type == Tk.IDENT or self.type == Tk.CONST_INT or \
+                self.type == Tk.CONST_FLOAT:
+            return "'" + self.contents + "'"
+        elif self.type == Tk.CONST_CHAR or self.type == Tk.CONST_STR:
+            return self.contents
+        else:
+            return TOKEN_NAMES[self.type]
+
     def combine(self, end: Token) -> Token:
         """
         Combine all tokens between this token and the end token into one large
@@ -874,7 +886,6 @@ INT_SUFFIXES = {
 A mapping between token type and its printable name.
 """
 TOKEN_NAMES = {x: "'" + x.value + "'" for x in Tk}
-TOKEN_NAMES[Tk.IDENT] = "identifier"
 TOKEN_NAMES[Tk.IDENT] = "identifier"
 TOKEN_NAMES[Tk.CONST_INT] = "number"
 TOKEN_NAMES[Tk.CONST_FLOAT] = "number"

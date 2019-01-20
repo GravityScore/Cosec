@@ -4,7 +4,7 @@
 # December 2018
 
 from __future__ import annotations
-from typing import Optional, Union
+from typing import Optional, Union, cast
 from enum import Enum
 
 from lexer import Tokens, Token, Tk
@@ -13,7 +13,7 @@ from error import Error
 
 class Node:
     """
-    The base class for any AST node.
+    Base class for any AST node.
     """
     pass
 
@@ -111,6 +111,24 @@ class TypeSpecifier(Enum):
     ULONG = "ulong"    # Unsigned 32 bit integer
     ULLONG = "ullong"  # Unsigned 64 bit integer
 
+    # Typedefs
+    TYPEDEF = "typedef"
+
+    # Structs, unions, and enums
+    STRUCT = "struct"
+    UNION = "union"
+    ENUM = "enum"
+
+    def __init__(self, _):
+        """
+        Creates a new type specifier, with potential to include information
+        about a typedef name, struct, union, or enum.
+        """
+        self.typedef_name = None
+        self.struct = None
+        self.union = None
+        self.enum = None
+
 
 class TypeQualifier(Enum):
     """
@@ -128,6 +146,54 @@ class FunctionSpecifier(Enum):
     level of a source code file.
     """
     INLINE = Tk.INLINE
+
+
+class StructSpecifier(Node):
+    """
+    A struct stores a series of fields as a list of declarations (with optional
+    declarators).
+    """
+
+    def __init__(self, name=None, fields=None):
+        super().__init__()
+        self.name = name      # Identifier token
+        self.fields = fields  # List of declarations (None for incomplete type)
+
+
+class UnionSpecifier(Node):
+    """
+    A union stores a series of fields as a list of declarations (with optional
+    declarators).
+    """
+
+    def __init__(self, name=None, fields=None):
+        super().__init__()
+        self.name = name      # Identifier token
+        self.fields = fields  # List of declarations (None for incomplete type)
+
+
+class EnumSpecifier(Node):
+    """
+    An enum stores a list of enumerator constants that can be used within a
+    scope.
+    """
+
+    def __init__(self, name=None, consts=None):
+        super().__init__()
+        self.name = name           # Identifier token
+        self.enum_consts = consts  # EnumConst list (None for incomplete type)
+
+
+class EnumConst(Node):
+    """
+    An enumerator constant is an identifier with an optional constant
+    expression.
+    """
+
+    def __init__(self, name, expr=None):
+        super().__init__()
+        self.name = name  # Identifier token
+        self.expr = expr  # Constant expression
 
 
 class Declarator(Node):
@@ -151,7 +217,7 @@ class DeclaratorArrayPart(Node):
 
     def __init__(self):
         super().__init__()
-        self.size = None
+        self.size = None        # Constant expression
         self.is_static = False
         self.is_vla = False
         self.type_qualifiers = set()
@@ -165,7 +231,7 @@ class DeclaratorFunctionPart(Node):
 
     def __init__(self):
         super().__init__()
-        self.args = []
+        self.args = []  # List of declarations
 
 
 class DeclaratorPointerPart(Node):
@@ -233,9 +299,11 @@ class CastExpression(Expression):
     A cast expression explicitly changes the type of its operand.
     """
 
-    def __init__(self, type: TypeName, operand: Expression):
+    def __init__(self, specifiers: DeclarationSpecifiers,
+                 declarator: Optional[Declarator], operand: Expression):
         super().__init__()
-        self.type = type
+        self.specifiers = specifiers
+        self.declarator = declarator
         self.operand = operand
 
 
@@ -250,9 +318,11 @@ class SizeofExpression(Expression):
     node.
     """
 
-    def __init__(self, type: TypeName):
+    def __init__(self, specifiers: DeclarationSpecifiers,
+                 declarator: Declarator):
         super().__init__()
-        self.type = type
+        self.specifiers = specifiers
+        self.declarator = declarator
 
 
 class UnaryExpression(Expression):
@@ -614,6 +684,17 @@ class LabelStatement(Statement):
 # ******************************************************************************
 
 
+class Scope:
+    """
+    A scope stores various lists of identifiers so we can disambiguate between
+    usages. Lists include typedef names and enumeration constants.
+    """
+
+    def __init__(self):
+        self.enum_consts = []
+        self.typedefs = []
+
+
 class Parser:
     """
     A parser generates an AST from a list of tokens produced by the lexer.
@@ -626,631 +707,196 @@ class Parser:
         :param tokens: The tokens list to construct an AST from.
         """
         self.t = tokens
+        self.scopes = []  # Inner-most scope is the last element in the list
+
+    def push_scope(self):
+        """
+        Adds a new scope to the top of the scopes stack.
+        """
+        self.scopes.append(Scope())
+
+    def pop_scope(self):
+        """
+        Removes the top scope off the scopes stack.
+        """
+        self.scopes.pop()
+
+    def find_typedef(self, name: str) -> bool:
+        """
+        Checks to see if the given name is a typedef symbol from some parent
+        scope.
+
+        :param name: The name (as a string) to check.
+        :return:     True if the name was used in a typedef in a parent scope.
+        """
+        # Iterate over the scopes in reverse order, so we search the inner-most
+        # scope first
+        for scope in reversed(self.scopes):
+            if name in scope.typedefs:
+                return True
+        return False
+
+    def find_enum_const(self, name: str) -> bool:
+        """
+        Checks to see if the given name is an enum constant from some parent
+        scope.
+
+        :param name: The name (as a string) to check.
+        :return:     True if the name was used as an enum constant in a parent
+                     scope.
+        """
+        # Iterate over the scopes in reverse order, so we search the inner-most
+        # scope first
+        for scope in reversed(self.scopes):
+            if name in scope.enum_consts:
+                return True
+        return False
+
+    # **************************************************************************
+    #     Root AST Node Parsing
+    # **************************************************************************
 
     def gen(self) -> list:
         """
         Generate the AST. The entry point for the grammar is:
 
-          start
+          translation_unit
             : external_declaration
-            | start external_declaration
+            | translation_unit external_declaration
 
         :return: A list of root AST nodes.
         """
+        # Create a file-level scope
+        self.push_scope()
+
+        # Keep parsing root nodes until we reach the end of the file
         nodes = []
         while self.t.cur().type != Tk.EOF:
-            self.parse_root_node(nodes)
+            node = self.parse_root_node()
+            nodes.append(node)
+
+        # Destroy the file-level scope
+        self.pop_scope()
         return nodes
 
-    def parse_root_node(self, nodes: list):
+    def parse_root_node(self):
         """
         Parse a root AST node, which occurs at the top level of the source code.
         This is either a function definition or declaration.
 
           external_declaration
-            : function_definition
-            | declaration
+              : function_definition
+              | declaration
+
+        :return: A root AST node.
+        """
+        # The scoping rules for a declaration and a function definition are
+        # different. For a function definition, any enum constants defined in
+        # its arguments can be used in the function's body, so we need to create
+        # a new scope BEFORE we parse the function declarator. For a
+        # declaration, any enum constants need to be included in the file-level
+        # scope (i.e. we don't create a new scope at all).
+        #
+        # Because of the different scoping rules, we need to know prior to
+        # parsing whether we're dealing with a function definition or a
+        # declaration. This is determined by the token AFTER the declaration
+        # specifiers and declarator
+        saved = self.t.save()
+        self.parse_declaration_specifiers()
+        self.parse_declarator()
+        discriminator = self.t.cur().type
+        self.t.restore(saved)
+
+        # Depending on the discriminating token
+        if discriminator == Tk.OPEN_BRACE:
+            return self.parse_function_definition()
+        else:
+            return self.parse_declaration_list()
+
+    def parse_function_definition(self):
+        """
+        Parse a function definition. The relevant grammar is:
 
           function_definition
-            : declaration_specifiers declarator declaration_list
-                compound_statement                   NOT SUPPORTED
-            | declaration_specifiers declarator compound_statement
+              : declaration_specifiers declarator declaration_list
+                  compound_statement                 NOT SUPPORTED
+              | declaration_specifiers declarator compound_statement
 
-        Note we don't support the old K&R style of function definitions,
-        indicated by the 'NOT SUPPORTED' tag next to the relevant line in the
-        above grammar.
+        Note we don't support the old K&R style function definitions, indicated
+        by the 'NOT SUPPORTED' tag next to the relevant line in the grammar.
 
-        :param nodes: A list of root nodes to append to.
+        :return: A function definition root AST node.
         """
-        # Both function definitions and declarations start with a set of
-        # declaration specifiers
+        # Parse a set of declaration specifiers
         specifiers = self.parse_declaration_specifiers()
 
-        # Parse a declarator
+        # The declarator tells us the function's name and its type signature
         declarator = self.parse_declarator()
 
-        # If the next character is an open brace, then we've got a function
-        # definition
-        if self.t.cur().type == Tk.OPEN_BRACE:
-            # Parse a block of statement
-            block = self.parse_compound_statement()
-
-            # Construct a function definition
-            definition = FunctionDefinition(specifiers, declarator, block)
-            nodes.append(definition)
-        else:
-            # We've got a declaration; check for an optional initializer
-            initializer = None
-            if self.t.cur().type == Tk.ASSIGN:
-                self.t.next()
-                initializer = self.parse_expression_root()
-
-            # Construct a declaration
-            declaration = Declaration(specifiers, declarator, initializer)
-            nodes.append(declaration)
-
-            # Check for another declaration
-            while self.t.cur().type == Tk.COMMA:
-                # Skip the comma
-                self.t.next()
-
-                # Parse a declarator and optional initializer
-                declarator = self.parse_declarator()
-                initializer = None
-                if self.t.cur().type == Tk.ASSIGN:
-                    self.t.next()
-                    initializer = self.parse_expression_root()
-
-                # Construct another declaration
-                declaration = Declaration(specifiers, declarator, initializer)
-                nodes.append(declaration)
-
-            # Expect a semicolon
-            self.t.expect(Tk.SEMICOLON)
-            self.t.next()
-
-    # **************************************************************************
-    #     Statement Parsing
-    # **************************************************************************
-
-    def parse_compound_statement(self) -> CompoundStatement:
-        """
-        Parse a list of statements surrounded by braces. The relevant grammar
-        is:
-
-          compound_statement
-            : '{' '}'
-            | '{'  block_item_list '}'
-
-          block_item_list
-            : block_item
-            | block_item_list block_item
-
-        :return: A list of statements.
-        """
-        # Opening brace
-        self.t.expect(Tk.OPEN_BRACE)
-        self.t.next()
-
-        # Parse a list of statements
-        statements = []
-        while self.t.cur().type != Tk.EOF and \
-                self.t.cur().type != Tk.CLOSE_BRACE:
-            statement = self.parse_statement()
-            statements.append(statement)
-
-        # Closing brace
-        self.t.expect(Tk.CLOSE_BRACE)
-        self.t.next()
-        return CompoundStatement(statements)
-
-    def parse_statement(self) -> Statement:
-        """
-        Parse a single statement (called a 'block_item' in the grammar). The
-        relevant grammar is:
-
-          block_item
-            : declaration
-            | statement
-
-          statement
-            : labeled_statement
-            | compound_statement
-            | expression_statement
-            | selection_statement
-            | iteration_statement
-            | jump_statement
-
-          labeled_statement
-            : IDENTIFIER ':' statement
-            | CASE constant_expression ':' statement
-            | DEFAULT ':' statement
-
-          expression_statement
-            : ';'
-            | expression ';'
-
-          selection_statement
-            : IF '(' expression ')' statement ELSE statement
-            | IF '(' expression ')' statement
-            | SWITCH '(' expression ')' statement
-
-          iteration_statement
-            : WHILE '(' expression ')' statement
-            | DO statement WHILE '(' expression ')' ';'
-            | FOR '(' expression_statement expression_statement ')' statement
-            | FOR '(' expression_statement expression_statement expression ')'
-                statement
-            | FOR '(' declaration expression_statement ')' statement
-            | FOR '(' declaration expression_statement expression ')' statement
-
-          jump_statement
-            : GOTO IDENTIFIER ';'
-            | CONTINUE ';'
-            | BREAK ';'
-            | RETURN ';'
-            | RETURN expression ';'
-
-        :return: A statement object.
-        """
-        if self.t.cur().type == Tk.IDENT and self.t.peek(1).type == Tk.COLON:
-            return self.parse_labelled_statement()
-        elif self.t.cur().type == Tk.CASE:
-            return self.parse_case_statement()
-        elif self.t.cur().type == Tk.DEFAULT:
-            return self.parse_default_statement()
-        elif self.t.cur().type == Tk.OPEN_BRACE:
-            return self.parse_compound_statement()
-        elif self.t.cur().type == Tk.IF:
-            return self.parse_if_statement()
-        elif self.t.cur().type == Tk.SWITCH:
-            return self.parse_switch_statement()
-        elif self.t.cur().type == Tk.WHILE:
-            return self.parse_while_statement()
-        elif self.t.cur().type == Tk.DO:
-            return self.parse_do_while_statement()
-        elif self.t.cur().type == Tk.FOR:
-            return self.parse_for_statement()
-        elif self.t.cur().type == Tk.GOTO:
-            return self.parse_goto_statement()
-        elif self.t.cur().type == Tk.CONTINUE:
-            return self.parse_continue_statement()
-        elif self.t.cur().type == Tk.BREAK:
-            return self.parse_break_statement()
-        elif self.t.cur().type == Tk.RETURN:
-            return self.parse_return_statement()
-        elif self.t.cur().type in BUILT_IN_TYPE_TOKENS:
-            return self.parse_declaration_statement()
-        elif self.t.cur().type == Tk.SEMICOLON:  # Ignore random semicolons
-            self.t.next()  # Skip the semicolon
-            return self.parse_statement()
-        else:
-            return self.parse_expression_statement()
-
-    def parse_labelled_statement(self) -> LabelStatement:
-        """
-        Parse a statement preceded by a label. The relevant grammar is:
-
-          labeled_statement
-            : IDENTIFIER ':' statement
-            ...
-
-        :return: A labelled statement.
-        """
-        # Expect an identifier
-        self.t.expect(Tk.IDENT)
-        name = self.t.cur()
-        self.t.next()
-
-        # Expect a colon
-        self.t.expect(Tk.COLON)
-        self.t.next()
-        return LabelStatement(name)
-
-    def parse_case_statement(self) -> CaseStatement:
-        """
-        Parse a case statement. The relevant grammar is:
-
-          labeled_statement
-            ...
-            | CASE constant_expression ':' statement
-            ...
-
-        :return: A case statement.
-        """
-        # Expect a case keyword
-        self.t.expect(Tk.CASE)
-        self.t.next()
-
-        # Parse the following expression
-        condition = self.parse_expression_root()
-
-        # Expect a colon
-        self.t.expect(Tk.COLON)
-        self.t.next()
-        return CaseStatement(condition)
-
-    def parse_default_statement(self) -> DefaultStatement:
-        """
-        Parse a default statement. The relevant grammar is:
-
-          labeled_statement
-            ...
-            | DEFAULT ':' statement
-
-        :return: A case statement.
-        """
-        # Expect a default keyword
-        self.t.expect(Tk.DEFAULT)
-        self.t.next()
-
-        # Expect a colon
-        self.t.expect(Tk.COLON)
-        self.t.next()
-        return DefaultStatement()
-
-    def parse_if_statement(self) -> IfStatementChain:
-        """
-        Parse an if statement. The relevant grammar is:
-
-          selection_statement
-            : IF '(' expression ')' statement ELSE statement
-            | IF '(' expression ')' statement
-            ...
-
-        :return: An if statement.
-        """
-        # We represent an if statement and any following else if or else
-        # clauses as an 'IfStatementChain'
-        chain = []
-
-        # Parse the initial 'if' clause
-        self.t.expect(Tk.IF)
-        statement = self.parse_if_clause()
-        chain.append(statement)
-
-        # Check for else ifs
-        while self.t.cur().type == Tk.ELSE:
-            # Check for an else if
-            if self.t.peek(1).type == Tk.IF:
-                # Skip the 'else' token to land on the 'if'
-                self.t.next()
-            type = self.t.cur().type
-
-            # Add a new element to the chain
-            statement = self.parse_if_clause()
-            chain.append(statement)
-
-            # Stop if we've reached an 'else' statement
-            if type == Tk.ELSE:
-                break
-        return IfStatementChain(chain)
-
-    def parse_if_clause(self) -> IfStatement:
-        """
-        Parses a single if, else if, or else clause within an if statement
-        chain.
-
-        :return: An if, else if, or else clause.
-        """
-        # Skip the 'if' or 'else' token
-        type = self.t.cur().type
-        self.t.next()
-
-        condition = None
-        if type == Tk.IF:
-            # Expect an expression surrounded by parentheses
-            self.t.expect(Tk.OPEN_PAREN)
-            self.t.next()
-            condition = self.parse_expression()
-            self.t.expect(Tk.CLOSE_PAREN)
-            self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return IfStatement(condition, body)
-
-    def parse_switch_statement(self) -> SwitchStatement:
-        """
-        Parse a switch statement. The relevant grammar is:
-
-          selection_statement
-            ...
-            | SWITCH '(' expression ')' statement
-
-        :return: A switch statement.
-        """
-        # Skip the switch token
-        self.t.expect(Tk.SWITCH)
-        self.t.next()
-
-        # Expect an expression surrounded by parentheses
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-        condition = self.parse_expression()
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return SwitchStatement(condition, body)
-
-    def parse_while_statement(self) -> WhileStatement:
-        """
-        Parse a while statement. The relevant grammar is:
-
-          iteration_statement
-            : WHILE '(' expression ')' statement
-            ...
-
-        :return: A while statement.
-        """
-        # Skip the while token
-        self.t.expect(Tk.WHILE)
-        self.t.next()
-
-        # Expect an expression surrounded by parentheses
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-        condition = self.parse_expression()
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return WhileStatement(condition, body)
-
-    def parse_do_while_statement(self) -> DoWhileStatement:
-        """
-        Parse a do while statement. The relevant grammar is:
-
-          iteration_statement
-            ...
-            | DO statement WHILE '(' expression ')' ';'
-            ...
-
-        :return: A do while statement.
-        """
-        # Skip the do token
-        self.t.expect(Tk.DO)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-
-        # Expect a while token
-        self.t.expect(Tk.WHILE)
-        self.t.next()
-
-        # Expect an expression in parentheses, concluded by a semicolon
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-        condition = self.parse_expression()
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return DoWhileStatement(condition, body)
-
-    def parse_for_statement(self) -> ForStatement:
-        """
-        Parse a for statement. The relevant grammar is:
-
-          iteration_statement
-            ...
-            | FOR '(' expression_statement expression_statement ')' statement
-            | FOR '(' expression_statement expression_statement expression ')'
-                statement
-            | FOR '(' declaration expression_statement ')' statement
-            | FOR '(' declaration expression_statement expression ')' statement
-
-        :return: A for statement.
-        """
-        # Skip the for token
-        self.t.expect(Tk.FOR)
-        self.t.next()
-
-        # Expect an open parenthesis
-        self.t.expect(Tk.OPEN_PAREN)
-        self.t.next()
-
-        # Check if we've got a declaration or an expression
-        initializer = None
-        if self.t.cur().type in BUILT_IN_TYPE_TOKENS:
-            # Parses the terminating semicolon for us
-            initializer = self.parse_declarations()
-        elif self.t.cur().type != Tk.SEMICOLON:
-            # Parse an expression
-            initializer = self.parse_expression()
-
-            # Expect a semicolon
-            self.t.expect(Tk.SEMICOLON)
-            self.t.next()
-        else:
-            # Have just a semicolon
-            self.t.next()
-
-        # Check for a condition
-        condition = None
-        if self.t.cur().type != Tk.SEMICOLON:
-            condition = self.parse_expression()
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-
-        # Check for an increment
-        increment = None
-        if self.t.cur().type != Tk.CLOSE_PAREN:
-            increment = self.parse_expression()
-
-        # Expect a close parenthesis
-        self.t.expect(Tk.CLOSE_PAREN)
-        self.t.next()
-
-        # Expect a statement
-        body = self.parse_statement()
-        return ForStatement(initializer, condition, increment, body)
-
-    def parse_goto_statement(self) -> GotoStatement:
-        """
-        Parse a goto statement. The relevant grammar is:
-
-          jump_statement
-            : GOTO IDENTIFIER ';'
-            ...
-
-        :return: A goto statement.
-        """
-        # Expect a goto token
-        self.t.expect(Tk.GOTO)
-        self.t.next()
-
-        # Expect an identifier
-        self.t.expect(Tk.IDENT)
-        name = self.t.cur()
-        self.t.next()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return GotoStatement(name)
-
-    def parse_continue_statement(self) -> ContinueStatement:
-        """
-        Parse a continue statement. The relevant grammar is:
-
-          jump_statement
-            ...
-            | CONTINUE ';'
-            ...
-
-        :return: A continue statement.
-        """
-        # Expect a continue token
-        self.t.expect(Tk.CONTINUE)
-        self.t.next()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return ContinueStatement()
-
-    def parse_break_statement(self) -> BreakStatement:
-        """
-        Parse a break statement. The relevant grammar is:
-
-          jump_statement
-            ...
-            | BREAK ';'
-            ...
-
-        :return: A break statement.
-        """
-        # Expect a break token
-        self.t.expect(Tk.BREAK)
-        self.t.next()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return BreakStatement()
-
-    def parse_return_statement(self) -> ReturnStatement:
-        """
-        Parse a return statement. The relevant grammar is:
-
-          jump_statement
-            ...
-            | RETURN ';'
-            | RETURN expression ';'
-
-        :return: A return statement.
-        """
-        # Expect a return token
-        self.t.expect(Tk.RETURN)
-        self.t.next()
-
-        # Check for an expression
-        result = None
-        if self.t.cur().type != Tk.SEMICOLON:
-            result = self.parse_expression()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return ReturnStatement(result)
-
-    def parse_declaration_statement(self) -> DeclarationStatement:
-        """
-        Parse a declaration statement. The relevant grammar is:
-
-          block_item
-            : declaration
-            ...
-
-        :return: A declaration statement.
-        """
-        declarations = self.parse_declarations()
-        return DeclarationStatement(declarations)
-
-    def parse_expression_statement(self) -> ExpressionStatement:
-        """
-        Parse an expression statement. The relevant grammar is:
-
-          expression_statement
-            : ';'
-            | expression ';'
-
-        :return: An expression statement.
-        """
-        # Parse an expression
-        expression = self.parse_expression()
-
-        # Expect a semicolon
-        self.t.expect(Tk.SEMICOLON)
-        self.t.next()
-        return ExpressionStatement(expression)
+        # Check we actually declared a function
+        if len(declarator.parts) == 0 or \
+                not isinstance(declarator.parts[-1], DeclaratorFunctionPart):
+            # TODO: associate a token with this error
+            raise Error("expected function declaration")
+
+        # Any enum constants used in the function's signature need to be usable
+        # in the function's body, so add them to a new scope
+        signature = cast(DeclaratorFunctionPart, declarator.parts[-1])
+        self.push_scope()
+        # TODO: finish once we've specified how enums work
+
+        # Parse a block of statement
+        block = self.parse_compound_statement()
+
+        # Destroy the scope we just created
+        self.pop_scope()
+
+        # Construct a function definition
+        definition = FunctionDefinition(specifiers, declarator, block)
+        return definition
 
     # **************************************************************************
     #     Declaration Parsing
     # **************************************************************************
 
-    def parse_declarations(self) -> DeclarationList:
+    def parse_declaration_list(self) -> DeclarationList:
         """
         Parse a list of declarations. The relevant grammar is:
 
-          declaration
-            : declaration_specifiers ';'
-            | declaration_specifiers init_declarator_list ';'
+            declaration
+                : declaration_specifiers ';'
+                | declaration_specifiers init_declarator_list ';'
+                | static_assert_declaration     NOT SUPPORTED
 
-          init_declarator_list
-            : init_declarator
-            | init_declarator_list ',' init_declarator
+            init_declarator_list
+                : init_declarator
+                | init_declarator_list ',' init_declarator
 
-          init_declarator
-            : declarator '=' initializer
-            | declarator
+            init_declarator
+                : declarator '=' initializer
+                | declarator
 
-          initializer
-            : '{' initializer_list '}'      TODO
-            | '{' initializer_list ',' '}'  TODO
-            | assignment_expression
+            initializer
+                : '{' initializer_list '}'      TODO
+                | '{' initializer_list ',' '}'  TODO
+                | assignment_expression
 
-          initializer_list
-            : designation initializer
-            | initializer
-            | initializer_list ',' designation initializer
-            | initializer_list ',' initializer
+            initializer_list                    TODO
+                : designation initializer
+                | initializer
+                | initializer_list ',' designation initializer
+                | initializer_list ',' initializer
 
-          designation
-            : designator_list '='
+            designation                         TODO
+                : designator_list '='
 
-          designator_list
-            : designator
-            | designator_list designator
+            designator_list                     TODO
+                : designator
+                | designator_list designator
 
-          designator
-            : '[' constant_expression ']'
-            | '.' IDENTIFIER
+            designator                          TODO
+                : '[' constant_expression ']'
+                | '.' IDENTIFIER
 
         :return: An array of declarations.
         """
@@ -1274,6 +920,13 @@ class Parser:
             declaration = Declaration(specifiers, declarator, initializer)
             declarations.append(declaration)
 
+            # Check if this declaration is a typedef
+            if specifiers.storage_class == StorageClass.TYPEDEF and \
+                    declarator.name is not None:
+                # Add the typedef name to the current scope
+                scope = self.scopes[-1]
+                scope.typedefs.append(declarator.name.contents)
+
             # Check for a comma
             if self.t.cur().type == Tk.COMMA:
                 self.t.next()
@@ -1285,49 +938,37 @@ class Parser:
         self.t.next()
         return DeclarationList(declarations)
 
-    def parse_type(self) -> TypeName:
+    def parse_type_name(self) -> TypeName:
         """
         Parse a type name, consisting of a set of declaration specifiers
-        followed by an optional abstract declarator.
+        followed by an optional declarator. The relevant grammar is:
+
+            type_name
+                : specifier_qualifier_list abstract_declarator
+                | specifier_qualifier_list
+
+            specifier_qualifier_list
+                : type_specifier specifier_qualifier_list
+                | type_specifier
+                | type_qualifier specifier_qualifier_list
+                | type_qualifier
+
+        This function differs from the above grammar, in that it doesn't
+        insist that the declarator be abstract. It's up to the calling function
+        to check if the declarator is abstract or not (depending on what it
+        wants).
 
         :return: The parsed type.
         """
         # Parse a set of declaration specifiers
         specifiers = self.parse_declaration_specifiers()
-        type = TypeName(specifiers)
 
         # Parse an optional declarator
-        if self.t.cur().type != Tk.CLOSE_PAREN and \
-                self.t.cur().type != Tk.COMMA:
-            type.declarator = self.parse_declarator()
-        return type
-
-    def try_parse_type(self) -> Optional[TypeName]:
-        """
-        Try parse a type surrounded in parentheses. If no valid type exists,
-        then return None.
-
-        :return: A type, or None.
-        """
-        saved = self.t.save()
-
-        # Check for an opening parenthesis
-        if self.t.cur().type != Tk.OPEN_PAREN:
-            return None
-        self.t.next()
-
-        # Try parsing a type
-        try:
-            type = self.parse_type()
-        except Error:
-            type = None
-            self.t.restore(saved)
-
-        # If we found a type, expect a closing parenthesis
-        if type is not None:
-            self.t.expect(Tk.CLOSE_PAREN)
-            self.t.next()
-        return type
+        declarator = None
+        type = self.t.cur().type
+        if type != Tk.CLOSE_PAREN and type != Tk.COMMA:
+            declarator = self.parse_declarator()
+        return TypeName(specifiers, declarator)
 
     def parse_declaration_specifiers(self) -> DeclarationSpecifiers:
         """
@@ -1342,26 +983,45 @@ class Parser:
                 | type_qualifier
                 | function_specifier declaration_specifiers
                 | function_specifier
+                | alignment_specifier declaration_specifiers   NOT SUPPORTED
+                | alignment_specifier                          NOT SUPPORTED
 
-            storage_class_specifier: TYPEDEF | EXTERN | STATIC | AUTO | REGISTER
+            storage_class_specifier
+                : TYPEDEF
+                | EXTERN
+                | STATIC
+                | AUTO
+                | THREAD_LOCAL               NOT SUPPORTED
+                | REGISTER
 
-            type_specifier: VOID | CHAR | SHORT | INT | LONG | FLOAT | DOUBLE
-                | SIGNED | UNSIGNED | BOOL | COMPLEX | IMAGINARY
-                | struct_or_union_specifier | enum_specifier | TYPEDEF_NAME
+            type_specifier
+                : VOID
+                | CHAR
+                | SHORT
+                | INT
+                | LONG
+                | FLOAT
+                | DOUBLE
+                | SIGNED
+                | UNSIGNED
+                | BOOL                       NOT SUPPORTED
+                | COMPLEX                    NOT SUPPORTED
+                | IMAGINARY                  NOT SUPPORTED
+                | struct_or_union_specifier
+                | enum_specifier
+                | TYPEDEF_NAME
 
-            type_qualifier: CONST | RESTRICT | VOLATILE
+            type_qualifier
+                : CONST
+                | RESTRICT
+                | VOLATILE
 
-            function_specifier: INLINE
-
-        Note THREAD_LOCAL, AUTO, REGISTER, BOOL, COMPLEX, IMAGINARY, RESTRICT,
-        and VOLATILE are unsupported. AUTO, REGISTER, RESTRICT, and VOLATILE are
-        all no-ops, and THREAD_LOCAL, BOOL, COMPLEX, IMAGINARY all trigger
-        compiler errors.
+            function_specifier
+                : INLINE
 
         :return: The set of declaration specifiers.
         """
-        # Keep track of which type names we've seen
-        type_names = []
+        type_tokens = []
 
         # Keep parsing tokens until we reach one that isn't valid
         specifiers = DeclarationSpecifiers()
@@ -1373,20 +1033,9 @@ class Parser:
                     raise Error(f"can't have two storage classes", self.t.cur())
                 specifiers.storage_class = StorageClass(type)
             elif type in BUILT_IN_TYPE_TOKENS:
-                # Collect the type name
-                type_names.append(type)
-
-                # Try match the accumulated type names to a built in type
-                type_specifier = None
-                for (candidate, options) in BUILT_IN_TYPES.items():
-                    # Convert all the tokens to strings
-                    if sorted(type_names, key=lambda x: x.value) in options:
-                        type_specifier = candidate
-                        break
-
-                # Check we could find a matching type specifier
-                if type_specifier is None:
-                    raise Error("cannot combine type", self.t.cur())
+                # Try parse a type specifier
+                type_tokens.append(type)
+                type_specifier = self.parse_type_specifier(type_tokens)
                 specifiers.type_specifier = type_specifier
             elif type in TYPE_QUALIFIERS:
                 # Add another type qualifier
@@ -1396,48 +1045,274 @@ class Parser:
                 # Add another function specifier
                 specifier = FunctionSpecifier(type)
                 specifiers.function_specifiers.add(specifier)
+            elif type == Tk.IDENT and self.find_typedef(self.t.cur().contents):
+                # Check we don't have any other type specifiers
+                if len(type_tokens) > 0:
+                    raise Error("can't combine type", self.t.cur())
+                specifiers.type_specifier = TypeSpecifier.TYPEDEF
+                specifiers.type_specifier.typedef_name = self.t.cur().contents
+            elif type == Tk.STRUCT:
+                # Check we don't have any other type specifiers
+                if len(type_tokens) > 0:
+                    raise Error("can't combine type", self.t.cur())
+                specifiers.type_specifier = TypeSpecifier.STRUCT
+                specifiers.type_specifier.struct = self.parse_struct_specifier()
+            elif type == Tk.UNION:
+                # Check we don't have any other type specifiers
+                if len(type_tokens) > 0:
+                    raise Error("can't combine type", self.t.cur())
+                specifiers.type_specifier = TypeSpecifier.UNION
+                specifiers.type_specifier.union = self.parse_union_specifier()
+            elif type == Tk.ENUM:
+                # Check we don't have any other type specifiers
+                if len(type_tokens) > 0:
+                    raise Error("can't combine type", self.t.cur())
+                specifiers.type_specifier = TypeSpecifier.ENUM
+                specifiers.type_specifier.enum = self.parse_enum_specifier()
             else:
+                # Token isn't a valid declaration specifier
                 break
             self.t.next()
 
-        # Check we actually parsed anything at all
+        # Check we had a type specifier
         if specifiers.type_specifier is None:
-            raise Error("expected type", self.t.cur())
+            raise Error("expected type name", self.t.cur())
         return specifiers
+
+    def parse_type_specifier(self, type_tokens: list) -> TypeSpecifier:
+        """
+        Takes a list of type tokens (e.g. int, long, unsigned, etc.) and tries
+        to find a type specifier that corresponds to these tokens. Triggers an
+        error if it can't.
+
+        :param type_tokens: The list of type tokens to parse.
+        :return:            A type specifier corresponding to the tokens.
+        """
+        # Try match the accumulated type tokens to a built in type
+        type_specifier = None
+        for (candidate, options) in BUILT_IN_TYPES.items():
+            # Convert all the tokens to strings
+            if sorted(type_tokens, key=lambda x: x.value) in options:
+                type_specifier = candidate
+                break
+
+        # Check we could find a matching type specifier
+        if type_specifier is None:
+            raise Error("cannot combine type", self.t.cur())
+        return type_specifier
+
+    def parse_struct_specifier(self) -> StructSpecifier:
+        """
+        Parses a struct type specifier in a declaration. See
+        `parse_struct_or_union` for the relevant grammar.
+
+        :return: Information about the struct declaration.
+        """
+        # Skip the `struct` keyword
+        self.t.expect(Tk.STRUCT)
+        self.t.next()
+
+        # Parse the declaration
+        name, fields = self.parse_struct_or_union()
+        struct = StructSpecifier(name, fields)
+        return struct
+
+    def parse_union_specifier(self) -> UnionSpecifier:
+        """
+        Parses a union type specifier in a declaration. See
+        `parse_struct_or_union` for the relevant grammar.
+
+        :return: Information about the union declaration.
+        """
+        # Skip the `union` keyword
+        self.t.expect(Tk.UNION)
+        self.t.next()
+
+        # Parse the declaration
+        name, fields = self.parse_struct_or_union()
+        union = UnionSpecifier(name, fields)
+        return union
+
+    def parse_struct_or_union(self) -> (Optional[Token], Optional[list]):
+        """
+        Parses a struct or union declaration, returning the optional name of the
+        struct/union, and an optional list of fields (None for an incomplete
+        declaration). The relevant grammar is:
+
+            struct_or_union_specifier
+                : struct_or_union '{' struct_declaration_list '}'
+                | struct_or_union IDENTIFIER '{' struct_declaration_list '}'
+                | struct_or_union IDENTIFIER
+
+            struct_or_union: STRUCT | UNION
+
+            struct_declaration_list
+                : struct_declaration
+                | struct_declaration_list struct_declaration
+
+            struct_declaration
+                : specifier_qualifier_list ';'
+                | specifier_qualifier_list struct_declarator_list ';'
+                | static_assert_declaration                 NOT SUPPORTED
+
+            struct_declarator_list
+                : struct_declarator
+                | struct_declarator_list ',' struct_declarator
+
+            struct_declarator
+                : ':' constant_expression                   NOT SUPPORTED
+                | declarator ':' constant_expression        NOT SUPPORTED
+                | declarator
+
+        :return: An optional name and fields list.
+        """
+        # We've already parsed the `struct` or `union` keyword
+        # Check for an identifier
+        name = None
+        if self.t.cur().type == Tk.IDENT:
+            name = self.t.cur()
+            self.t.next()
+
+        # If there's no open parenthesis, then this is an incomplete declaration
+        # (and we MUST have a name)
+        if self.t.cur().type != Tk.OPEN_BRACE:
+            if name is None:
+                raise Error("expected struct name", self.t.cur())
+            return name, None
+        self.t.next()
+
+        # Keep parsing declarations until we reach the terminating brace
+        fields = []
+        while self.t.cur().type != Tk.CLOSE_BRACE:
+            # Parse a declaration
+            specifiers = self.parse_declaration_specifiers()
+
+            # Parse a list of declarators separated by commas
+            while self.t.cur().type != Tk.SEMICOLON:
+                # Parse a declarator and add a declaration
+                declarator = self.parse_declarator()
+                declaration = Declaration(specifiers, declarator)
+                fields.append(declaration)
+
+                # Check for another declarator
+                if self.t.cur().type == Tk.COMMA:
+                    self.t.next()
+                else:
+                    break
+
+            # Ensure a semicolon terminates the declaration list
+            if self.t.cur().type == Tk.SEMICOLON:
+                self.t.next()
+            else:
+                break
+
+        # Expect a closing brace
+        self.t.expect(Tk.CLOSE_BRACE)
+        self.t.next()
+        return name, fields
+
+    def parse_enum_specifier(self) -> EnumSpecifier:
+        """
+        Parses an enum type specifier in a declaration. The relevant grammar is:
+
+            enum_specifier
+                : ENUM '{' enumerator_list '}'
+                | ENUM '{' enumerator_list ',' '}'
+                | ENUM IDENTIFIER '{' enumerator_list '}'
+                | ENUM IDENTIFIER '{' enumerator_list ',' '}'
+                | ENUM IDENTIFIER
+
+            enumerator_list
+                : enumerator
+                | enumerator_list ',' enumerator
+
+            enumerator
+                : enumeration_constant '=' constant_expression
+                | enumeration_constant
+
+        :return: Information about the enum declaration.
+        """
+        # Skip the enum token
+        self.t.expect(Tk.ENUM)
+        self.t.next()
+
+        # Check for an identifier
+        name = None
+        if self.t.cur().type == Tk.IDENT:
+            name = self.t.cur()
+            self.t.next()
+
+        # If we don't have an opening brace, then we need a name
+        if self.t.cur().type != Tk.OPEN_BRACE:
+            if name is None:
+                raise Error("expected enum name", self.t.cur())
+            return EnumSpecifier(name)
+        self.t.next()
+
+        # Parse a series of enumerator constants separated by commas
+        consts = []
+        while self.t.cur().type != Tk.CLOSE_BRACE:
+            # Expect an identifier
+            self.t.expect(Tk.IDENT)
+            const_name = self.t.cur()
+            self.t.next()
+
+            # Check for a constant expression
+            expr = None
+            if self.t.cur().type == Tk.ASSIGN:
+                self.t.next()
+                expr = self.parse_expression_root()
+
+            # Add a constant
+            const = EnumConst(const_name, expr)
+            consts.append(const)
+
+            # Expect a comma
+            if self.t.cur().type == Tk.COMMA:
+                self.t.next()
+            else:
+                break
+
+        # Expect a close brace
+        self.t.expect(Tk.CLOSE_BRACE)
+        self.t.next()
+        return EnumSpecifier(name, consts)
 
     def parse_declarator(self) -> Declarator:
         """
         Parse a declarator. A great article on declarator parsing describing the
         approach used here can be found at:
 
-          http://blog.robertelder.org/building-a-c-compiler-type-system-the-
-          formidable-declarator/
+            http://blog.robertelder.org/building-a-c-compiler-type-system-the-
+            formidable-declarator/
 
         The relevant grammar is:
 
-          declarator
-            : pointer direct_declarator
-            | direct_declarator
+            declarator
+                : pointer direct_declarator
+                | direct_declarator
 
-          direct_declarator
-            : IDENTIFIER
-            | '(' declarator ')'
-            | direct_declarator '[' ']'
-            | direct_declarator '[' type_qualifiers ']'
-            | direct_declarator '[' '*' ']'
-            | direct_declarator '[' type_qualifiers '*' ']'
-            | direct_declarator '[' expression ']'
-            | direct_declarator '[' type_qualifiers expression ']'
-            | direct_declarator '[' STATIC expression ']'
-            | direct_declarator '[' STATIC type_qualifiers expression ']'
-            | direct_declarator '[' type_qualifiers STATIC expression ']'
-            | direct_declarator '(' parameter_types ')'
-            | direct_declarator '(' identifiers ')'      NOT SUPPORTED
-            | direct_declarator '(' ')'
+            direct_declarator
+                : IDENTIFIER
+                | '(' declarator ')'
+                | direct_declarator '[' ']'
+                | direct_declarator '[' type_qualifiers ']'
+                | direct_declarator '[' '*' ']'
+                | direct_declarator '[' type_qualifiers '*' ']'
+                | direct_declarator '[' expression ']'
+                | direct_declarator '[' type_qualifiers expression ']'
+                | direct_declarator '[' STATIC expression ']'
+                | direct_declarator '[' STATIC type_qualifiers expression ']'
+                | direct_declarator '[' type_qualifiers STATIC expression ']'
+                | direct_declarator '(' parameter_types ')'
+                | direct_declarator '(' identifiers ')'      NOT SUPPORTED
+                | direct_declarator '(' ')'
 
         This function parses both named and abstract declarators. Note the old
         K&R style function definitions are not supported, as indicated by the
         'NOT SUPPORTED' tag next to the relevant line in the above grammar.
+
+        :return: The parsed declarator.
         """
         # Parse a declarator recursively
         declarator = Declarator()
@@ -1452,6 +1327,8 @@ class Parser:
         """
         Parse a single part of a declarator (either an array, pointer, or
         function part).
+
+        :param declarator: The resulting declarator that we're parsing.
         """
         # Parse a list of pointer parts
         pointers = []
@@ -1494,15 +1371,15 @@ class Parser:
         Parse a pointer declarator part from a tokens list. The relevant grammar
         is:
 
-          pointer
-            : '*' type_qualifiers pointer
-            | '*' type_qualifiers
-            | '*' pointer
-            | '*'
+            pointer
+                : '*' type_qualifiers pointer
+                | '*' type_qualifiers
+                | '*' pointer
+                | '*'
 
-          type_qualifiers
-            : type_qualifier
-            | type_qualifiers type_qualifier
+            type_qualifiers
+                : type_qualifier
+                | type_qualifiers type_qualifier
 
         You can find information on using 'static' and type qualifiers in array
         declarators here:
@@ -1529,24 +1406,24 @@ class Parser:
         Parse a function declarator part from a tokens list. The relevant
         grammar is:
 
-          direct_declarator
-            : ...
-            | direct_declarator '(' parameter_types ')'
-            | direct_declarator '(' identifiers ')'      NOT SUPPORTED
-            | direct_declarator '(' ')'
+            direct_declarator
+                : ...
+                | direct_declarator '(' parameter_types ')'
+                | direct_declarator '(' identifiers ')'      NOT SUPPORTED
+                | direct_declarator '(' ')'
 
-          parameter_types
-            : parameter_list ',' '...'
-            | parameter_list
+            parameter_types
+                : parameter_list ',' '...'
+                | parameter_list
 
-          parameter_list
-            : parameter_declaration
-            | parameter_list ',' parameter_declaration
+            parameter_list
+                : parameter_declaration
+                | parameter_list ',' parameter_declaration
 
-          parameter_declaration
-            : declaration_specifiers declarator
-            | declaration_specifiers abstract_declarator
-            | declaration_specifiers
+            parameter_declaration
+                : declaration_specifiers declarator
+                | declaration_specifiers abstract_declarator
+                | declaration_specifiers
 
         Note we don't support the old K&R style function definitions, as
         indicated by the 'NOT SUPPORTED' tag next to the relevant line in the
@@ -1563,11 +1440,16 @@ class Parser:
                 self.t.peek(1).type == Tk.CLOSE_PAREN:
             self.t.next()  # Skip 'void' and stop on the close parenthesis
 
+        # Everything defined in the function declarator is in its own scope
+        # (e.g. enums constants defined in the function prototype are not
+        # accessible outside the declarator)
+        self.push_scope()
+
         # Parse a list of argument declarations
         function = DeclaratorFunctionPart()
         while self.t.cur().type != Tk.EOF and \
                 self.t.cur().type != Tk.CLOSE_PAREN:
-            arg = self.parse_type()
+            arg = self.parse_type_name()
             function.args.append(arg)
 
             # Parse a comma
@@ -1579,6 +1461,9 @@ class Parser:
         # Expect a close parenthesis
         self.t.expect(Tk.CLOSE_PAREN)
         self.t.next()
+
+        # Destroy the scope we just created
+        self.pop_scope()
         return function
 
     def parse_declarator_array_part(self) -> DeclaratorArrayPart:
@@ -1641,6 +1526,517 @@ class Parser:
         return array
 
     # **************************************************************************
+    #     Statement Parsing
+    # **************************************************************************
+
+    def parse_compound_statement(self) -> CompoundStatement:
+        """
+        Parse a list of statements surrounded by braces. The relevant grammar
+        is:
+
+            compound_statement
+                : '{' '}'
+                | '{'  block_item_list '}'
+
+            block_item_list
+                : block_item
+                | block_item_list block_item
+
+        :return: A list of statements.
+        """
+        # Opening brace
+        self.t.expect(Tk.OPEN_BRACE)
+        self.t.next()
+
+        # Create a new scope for the block
+        self.push_scope()
+
+        # Parse a list of statements
+        statements = []
+        while self.t.cur().type != Tk.EOF and \
+                self.t.cur().type != Tk.CLOSE_BRACE:
+            statement = self.parse_statement()
+            statements.append(statement)
+
+        # Destroy the scope we just created
+        self.pop_scope()
+
+        # Closing brace
+        self.t.expect(Tk.CLOSE_BRACE)
+        self.t.next()
+        return CompoundStatement(statements)
+
+    def parse_statement(self) -> Statement:
+        """
+        Parse a single statement (called a 'block_item' in the grammar). The
+        relevant grammar is:
+
+            block_item
+                : declaration
+                | statement
+
+            statement
+                : labeled_statement
+                | compound_statement
+                | expression_statement
+                | selection_statement
+                | iteration_statement
+                | jump_statement
+
+            labeled_statement
+                : IDENTIFIER ':' statement
+                | CASE constant_expression ':' statement
+                | DEFAULT ':' statement
+
+            expression_statement
+                : ';'
+                | expression ';'
+
+            selection_statement
+                : IF '(' expression ')' statement ELSE statement
+                | IF '(' expression ')' statement
+                | SWITCH '(' expression ')' statement
+
+            iteration_statement
+                : WHILE '(' expression ')' statement
+                | DO statement WHILE '(' expression ')' ';'
+                | FOR '(' expression_statement expression_statement ')'
+                    statement
+                | FOR '(' expression_statement expression_statement expression
+                    ')' statement
+                | FOR '(' declaration expression_statement ')' statement
+                | FOR '(' declaration expression_statement expression ')'
+                    statement
+
+            jump_statement
+                : GOTO IDENTIFIER ';'
+                | CONTINUE ';'
+                | BREAK ';'
+                | RETURN ';'
+                | RETURN expression ';'
+
+        :return: A statement object.
+        """
+        if self.t.cur().type == Tk.IDENT and self.t.peek(1).type == Tk.COLON:
+            return self.parse_labelled_statement()
+        elif self.t.cur().type == Tk.CASE:
+            return self.parse_case_statement()
+        elif self.t.cur().type == Tk.DEFAULT:
+            return self.parse_default_statement()
+        elif self.t.cur().type == Tk.OPEN_BRACE:
+            return self.parse_compound_statement()
+        elif self.t.cur().type == Tk.IF:
+            return self.parse_if_statement()
+        elif self.t.cur().type == Tk.SWITCH:
+            return self.parse_switch_statement()
+        elif self.t.cur().type == Tk.WHILE:
+            return self.parse_while_statement()
+        elif self.t.cur().type == Tk.DO:
+            return self.parse_do_while_statement()
+        elif self.t.cur().type == Tk.FOR:
+            return self.parse_for_statement()
+        elif self.t.cur().type == Tk.GOTO:
+            return self.parse_goto_statement()
+        elif self.t.cur().type == Tk.CONTINUE:
+            return self.parse_continue_statement()
+        elif self.t.cur().type == Tk.BREAK:
+            return self.parse_break_statement()
+        elif self.t.cur().type == Tk.RETURN:
+            return self.parse_return_statement()
+        elif self.t.cur().type in BUILT_IN_TYPE_TOKENS:
+            return self.parse_declaration_statement()
+        elif self.t.cur().type == Tk.SEMICOLON:  # Ignore random semicolons
+            self.t.next()  # Skip the semicolon
+            return self.parse_statement()
+        else:
+            return self.parse_expression_statement()
+
+    def parse_labelled_statement(self) -> LabelStatement:
+        """
+        Parse a statement preceded by a label. The relevant grammar is:
+
+            labeled_statement
+                : IDENTIFIER ':' statement
+                ...
+
+        :return: A labelled statement.
+        """
+        # Expect an identifier
+        self.t.expect(Tk.IDENT)
+        name = self.t.cur()
+        self.t.next()
+
+        # Expect a colon
+        self.t.expect(Tk.COLON)
+        self.t.next()
+        return LabelStatement(name)
+
+    def parse_case_statement(self) -> CaseStatement:
+        """
+        Parse a case statement. The relevant grammar is:
+
+            labeled_statement
+                ...
+                | CASE constant_expression ':' statement
+                ...
+
+        :return: A case statement.
+        """
+        # Expect a case keyword
+        self.t.expect(Tk.CASE)
+        self.t.next()
+
+        # Parse the following expression
+        condition = self.parse_expression_root()
+
+        # Expect a colon
+        self.t.expect(Tk.COLON)
+        self.t.next()
+        return CaseStatement(condition)
+
+    def parse_default_statement(self) -> DefaultStatement:
+        """
+        Parse a default statement. The relevant grammar is:
+
+            labeled_statement
+                ...
+                | DEFAULT ':' statement
+
+        :return: A case statement.
+        """
+        # Expect a default keyword
+        self.t.expect(Tk.DEFAULT)
+        self.t.next()
+
+        # Expect a colon
+        self.t.expect(Tk.COLON)
+        self.t.next()
+        return DefaultStatement()
+
+    def parse_if_statement(self) -> IfStatementChain:
+        """
+        Parse an if statement. The relevant grammar is:
+
+            selection_statement
+                : IF '(' expression ')' statement ELSE statement
+                | IF '(' expression ')' statement
+                ...
+
+        :return: An if statement.
+        """
+        # We represent an if statement and any following else if or else
+        # clauses as an 'IfStatementChain'
+        chain = []
+
+        # Parse the initial 'if' clause
+        self.t.expect(Tk.IF)
+        statement = self.parse_if_clause()
+        chain.append(statement)
+
+        # Check for else ifs
+        while self.t.cur().type == Tk.ELSE:
+            # Check for an else if
+            if self.t.peek(1).type == Tk.IF:
+                # Skip the 'else' token to land on the 'if'
+                self.t.next()
+            type = self.t.cur().type
+
+            # Add a new element to the chain
+            statement = self.parse_if_clause()
+            chain.append(statement)
+
+            # Stop if we've reached an 'else' statement
+            if type == Tk.ELSE:
+                break
+        return IfStatementChain(chain)
+
+    def parse_if_clause(self) -> IfStatement:
+        """
+        Parses a single if, else if, or else clause within an if statement
+        chain.
+
+        :return: An if, else if, or else clause.
+        """
+        # Skip the 'if' or 'else' token
+        type = self.t.cur().type
+        self.t.next()
+
+        condition = None
+        if type == Tk.IF:
+            # Expect an expression surrounded by parentheses
+            self.t.expect(Tk.OPEN_PAREN)
+            self.t.next()
+            condition = self.parse_expression()
+            self.t.expect(Tk.CLOSE_PAREN)
+            self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return IfStatement(condition, body)
+
+    def parse_switch_statement(self) -> SwitchStatement:
+        """
+        Parse a switch statement. The relevant grammar is:
+
+            selection_statement
+                ...
+                | SWITCH '(' expression ')' statement
+
+        :return: A switch statement.
+        """
+        # Skip the switch token
+        self.t.expect(Tk.SWITCH)
+        self.t.next()
+
+        # Expect an expression surrounded by parentheses
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+        condition = self.parse_expression()
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return SwitchStatement(condition, body)
+
+    def parse_while_statement(self) -> WhileStatement:
+        """
+        Parse a while statement. The relevant grammar is:
+
+            iteration_statement
+                : WHILE '(' expression ')' statement
+                ...
+
+        :return: A while statement.
+        """
+        # Skip the while token
+        self.t.expect(Tk.WHILE)
+        self.t.next()
+
+        # Expect an expression surrounded by parentheses
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+        condition = self.parse_expression()
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return WhileStatement(condition, body)
+
+    def parse_do_while_statement(self) -> DoWhileStatement:
+        """
+        Parse a do while statement. The relevant grammar is:
+
+            iteration_statement
+                ...
+                | DO statement WHILE '(' expression ')' ';'
+                ...
+
+        :return: A do while statement.
+        """
+        # Skip the do token
+        self.t.expect(Tk.DO)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+
+        # Expect a while token
+        self.t.expect(Tk.WHILE)
+        self.t.next()
+
+        # Expect an expression in parentheses, concluded by a semicolon
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+        condition = self.parse_expression()
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return DoWhileStatement(condition, body)
+
+    def parse_for_statement(self) -> ForStatement:
+        """
+        Parse a for statement. The relevant grammar is:
+
+            iteration_statement
+                ...
+                | FOR '(' expression_statement expression_statement ')'
+                    statement
+                | FOR '(' expression_statement expression_statement expression
+                    ')' statement
+                | FOR '(' declaration expression_statement ')' statement
+                | FOR '(' declaration expression_statement expression ')'
+                    statement
+
+        :return: A for statement.
+        """
+        # Skip the for token
+        self.t.expect(Tk.FOR)
+        self.t.next()
+
+        # Expect an open parenthesis
+        self.t.expect(Tk.OPEN_PAREN)
+        self.t.next()
+
+        # Check if we've got a declaration or an expression
+        initializer = None
+        if self.t.cur().type in BUILT_IN_TYPE_TOKENS:
+            # Parses the terminating semicolon for us
+            initializer = self.parse_declaration_list()
+        elif self.t.cur().type != Tk.SEMICOLON:
+            # Parse an expression
+            initializer = self.parse_expression()
+
+            # Expect a semicolon
+            self.t.expect(Tk.SEMICOLON)
+            self.t.next()
+        else:
+            # Have just a semicolon
+            self.t.next()
+
+        # Check for a condition
+        condition = None
+        if self.t.cur().type != Tk.SEMICOLON:
+            condition = self.parse_expression()
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+
+        # Check for an increment
+        increment = None
+        if self.t.cur().type != Tk.CLOSE_PAREN:
+            increment = self.parse_expression()
+
+        # Expect a close parenthesis
+        self.t.expect(Tk.CLOSE_PAREN)
+        self.t.next()
+
+        # Expect a statement
+        body = self.parse_statement()
+        return ForStatement(initializer, condition, increment, body)
+
+    def parse_goto_statement(self) -> GotoStatement:
+        """
+        Parse a goto statement. The relevant grammar is:
+
+            jump_statement
+                : GOTO IDENTIFIER ';'
+                ...
+
+        :return: A goto statement.
+        """
+        # Expect a goto token
+        self.t.expect(Tk.GOTO)
+        self.t.next()
+
+        # Expect an identifier
+        self.t.expect(Tk.IDENT)
+        name = self.t.cur()
+        self.t.next()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return GotoStatement(name)
+
+    def parse_continue_statement(self) -> ContinueStatement:
+        """
+        Parse a continue statement. The relevant grammar is:
+
+            jump_statement
+                ...
+                | CONTINUE ';'
+                ...
+
+        :return: A continue statement.
+        """
+        # Expect a continue token
+        self.t.expect(Tk.CONTINUE)
+        self.t.next()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return ContinueStatement()
+
+    def parse_break_statement(self) -> BreakStatement:
+        """
+        Parse a break statement. The relevant grammar is:
+
+            jump_statement
+                ...
+                | BREAK ';'
+                ...
+
+        :return: A break statement.
+        """
+        # Expect a break token
+        self.t.expect(Tk.BREAK)
+        self.t.next()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return BreakStatement()
+
+    def parse_return_statement(self) -> ReturnStatement:
+        """
+        Parse a return statement. The relevant grammar is:
+
+            jump_statement
+                ...
+                | RETURN ';'
+                | RETURN expression ';'
+
+        :return: A return statement.
+        """
+        # Expect a return token
+        self.t.expect(Tk.RETURN)
+        self.t.next()
+
+        # Check for an expression
+        result = None
+        if self.t.cur().type != Tk.SEMICOLON:
+            result = self.parse_expression()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return ReturnStatement(result)
+
+    def parse_declaration_statement(self) -> DeclarationStatement:
+        """
+        Parse a declaration statement. The relevant grammar is:
+
+            block_item
+                : declaration
+                ...
+
+        :return: A declaration statement.
+        """
+        declarations = self.parse_declaration_list()
+        return DeclarationStatement(declarations)
+
+    def parse_expression_statement(self) -> ExpressionStatement:
+        """
+        Parse an expression statement. The relevant grammar is:
+
+            expression_statement
+                : ';'
+                | expression ';'
+
+        :return: An expression statement.
+        """
+        # Parse an expression
+        expression = self.parse_expression()
+
+        # Expect a semicolon
+        self.t.expect(Tk.SEMICOLON)
+        self.t.next()
+        return ExpressionStatement(expression)
+
+    # **************************************************************************
     #     Expression Parsing
     # **************************************************************************
 
@@ -1648,9 +2044,9 @@ class Parser:
         """
         Parse an expression from a list of tokens. The relevant grammar is:
 
-          expression
-            : assignment_expression
-            | expression ',' assignment_expression
+            expression
+                : assignment_expression
+                | expression ',' assignment_expression
 
         :return: An expression list.
         """
@@ -1707,33 +2103,81 @@ class Parser:
                 break
             self.t.next()
 
-            # Parse the right operand
-            right = self.parse_expression_recursive(precedence)
-
             # Check for a ternary operator
             if operator == BinaryOperator.TERNARY:
-                # Expect a colon
-                self.t.expect(Tk.COLON)
-                self.t.next()
-
-                # Parse another expression
-                after = self.parse_expression_recursive(precedence)
-
-                # Construct a ternary operation
-                left = TernaryExpression(left, right, after)
+                left = self.parse_ternary_expression(left)
             else:
+                # Parse the right operand
+                right = self.parse_expression_recursive(precedence)
+
                 # Construct a binary operation
                 left = BinaryExpression(operator, left, right)
         return left
+
+    def parse_ternary_expression(self, condition: Expression) -> Expression:
+        """
+        Parse a ternary expression. The relevant grammar is:
+
+            conditional_expression
+                : logical_or_expression
+                | logical_or_expression '?' expression ':'
+                    conditional_expression
+
+        :param condition: The initial condition expression.
+        :return:          A ternary expression.
+        """
+        # Parse the true expression
+        true = self.parse_expression()
+
+        # Expect a colon
+        self.t.expect(Tk.COLON)
+        self.t.next()
+
+        # Parse the false expression
+        false = self.parse_expression_recursive(Precedence.TERNARY)
+
+        # Construct a ternary operation
+        return TernaryExpression(condition, true, false)
+
+    def try_parse_type_name(self) -> Optional[TypeName]:
+        """
+        Try parse a type surrounded in parentheses. If no valid type exists,
+        then return None. The relevant grammar is:
+
+            type_name
+                : specifier_qualifier_list abstract_declarator
+                | specifier_qualifier_list
+
+        :return: A type, or None.
+        """
+        saved = self.t.save()
+
+        # Check for an opening parenthesis
+        if self.t.cur().type != Tk.OPEN_PAREN:
+            return None
+        self.t.next()
+
+        # Try parsing a type
+        try:
+            type = self.parse_type_name()
+        except Error:
+            type = None
+            self.t.restore(saved)
+
+        # If we found a type, expect a closing parenthesis
+        if type is not None:
+            self.t.expect(Tk.CLOSE_PAREN)
+            self.t.next()
+        return type
 
     def parse_cast_expression(self) -> Expression:
         """
         Parse an optional cast of an expression to another type. The relevant
         grammar is:
 
-          cast_expression
-            : unary_expression
-            | '(' type_name ')' cast_expression
+            cast_expression
+                : unary_expression
+                | '(' type_name ')' cast_expression
 
         :return: A cast expression.
         """
@@ -1743,7 +2187,7 @@ class Parser:
 
         # An open parenthesis here could indicate either a cast or a
         # subexpression; try parsing a type name
-        type = self.try_parse_type()
+        type = self.try_parse_type_name()
 
         if type is None:
             # Failed to parse a type name, try a subexpression
@@ -1756,7 +2200,7 @@ class Parser:
 
             # Parse the unary expression that follows
             operand = self.parse_sizeof_expression()
-            return CastExpression(type, operand)
+            return CastExpression(type.specifiers, type.declarator, operand)
 
     def parse_sizeof_expression(self) -> Expression:
         """
@@ -1767,10 +2211,10 @@ class Parser:
 
         The relevant grammar is:
 
-          unary_expression
-            ...
-            | SIZEOF unary_expression
-            | SIZEOF '(' type_name ')'
+            unary_expression
+                ...
+                | SIZEOF unary_expression
+                | SIZEOF '(' type_name ')'
 
         :return: A sizeof expression.
         """
@@ -1781,9 +2225,9 @@ class Parser:
 
         # Try parsing a type in parentheses
         if self.t.cur().type == Tk.OPEN_PAREN:
-            type = self.try_parse_type()
+            type = self.try_parse_type_name()
             if type is not None:
-                return SizeofExpression(type)
+                return SizeofExpression(type.specifiers, type.declarator)
 
         # Otherwise, expect an expression (don't allow casting of the operand)
         operand = self.parse_unary_expression()
@@ -1793,13 +2237,14 @@ class Parser:
         """
         Parse a unary or prefix operation. The relevant grammar is:
 
-          unary_expression
-            : postfix_expression
-            | INC_OP unary_expression
-            | DEC_OP unary_expression
-            | unary_operator cast_expression
-            | SIZEOF unary_expression
-            | SIZEOF '(' type_name ')'
+            unary_expression
+                : postfix_expression
+                | INC_OP unary_expression
+                | DEC_OP unary_expression
+                | unary_operator cast_expression
+                | SIZEOF unary_expression
+                | SIZEOF '(' type_name ')'
+                | ALIGNOF '(' type_name ')'        NOT SUPPORTED
 
           unary_operator: '&' | '*' | '+' | '-' | '~' | '!'
 
@@ -1825,21 +2270,21 @@ class Parser:
         Parse a postfix operation, including postfix operators, array accesses,
         function calls, or struct field accesses.
 
-          postfix_expression
-            : primary_expression
-            | postfix_expression '[' expression ']'
-            | postfix_expression '(' ')'
-            | postfix_expression '(' argument_expression_list ')'
-            | postfix_expression '.' IDENTIFIER
-            | postfix_expression PTR_OP IDENTIFIER
-            | postfix_expression INC_OP
-            | postfix_expression DEC_OP
-            | '(' type_name ')' '{' initializer_list '}'      TODO
-            | '(' type_name ')' '{' initializer_list ',' '}'  TODO
+            postfix_expression
+                : primary_expression
+                | postfix_expression '[' expression ']'
+                | postfix_expression '(' ')'
+                | postfix_expression '(' argument_expression_list ')'
+                | postfix_expression '.' IDENTIFIER
+                | postfix_expression PTR_OP IDENTIFIER
+                | postfix_expression INC_OP
+                | postfix_expression DEC_OP
+                | '(' type_name ')' '{' initializer_list '}'      TODO
+                | '(' type_name ')' '{' initializer_list ',' '}'  TODO
 
-          argument_expression_list
-            : assignment_expression
-            | argument_expression_list ',' assignment_expression
+            argument_expression_list
+                : assignment_expression
+                | argument_expression_list ',' assignment_expression
 
         :return: A postfix expression.
         """
@@ -1870,10 +2315,10 @@ class Parser:
         Parse an array access after a primary expression. The relevant grammar
         is:
 
-          postfix_expression
-            ...
-            | postfix_expression '[' expression ']'
-            ...
+            postfix_expression
+                ...
+                | postfix_expression '[' expression ']'
+                ...
 
         :param array: The array that we're accessing.
         :return:      An array access expression node.
@@ -1895,11 +2340,11 @@ class Parser:
         Parse a function call after a primary expression. The relevant grammar
         is:
 
-          postfix_expression
-            ...
-            | postfix_expression '(' ')'
-            | postfix_expression '(' argument_expression_list ')'
-            ...
+            postfix_expression
+                ...
+                | postfix_expression '(' ')'
+                | postfix_expression '(' argument_expression_list ')'
+                ...
 
         :param func: The function that we're calling.
         :return:     A function call expression node.
@@ -1930,10 +2375,10 @@ class Parser:
         Parse a struct field access through a direct access (using '.'). The
         relevant grammar is:
 
-          postfix_expression
-            ...
-            | postfix_expression '.' IDENTIFIER
-            ...
+            postfix_expression
+                ...
+                | postfix_expression '.' IDENTIFIER
+                ...
 
         :param struct: The struct to access a field on.
         :return:       A field access expression node.
@@ -1953,10 +2398,10 @@ class Parser:
         Parse a struct field access through a dereference access (using '->').
         The relevant grammar is:
 
-          postfix_expression
-            ...
-            | postfix_expression PTR_OP IDENTIFIER
-            ...
+            postfix_expression
+                ...
+                | postfix_expression PTR_OP IDENTIFIER
+                ...
 
         :param struct: The struct to access a field on.
         :return:       A field access expression node.
@@ -1980,16 +2425,24 @@ class Parser:
         Parse a primary expression, including symbols, constants, and
         subexpressions. The relevant grammar is:
 
-          primary_expression
-            : IDENTIFIER
-            | constant
-            | string
-            | '(' expression ')'
+            primary_expression
+                : IDENTIFIER
+                | constant
+                | string
+                | '(' expression ')'
 
-          constant
-            : INTEGER_CONSTANT
-            | FLOAT_CONSTANT
-            | ENUMERATION_CONSTANT
+            constant
+                : INT_CONSTANT
+                | FLOAT_CONSTANT
+                | CHAR_CONSTANT
+                | enumeration_constant
+
+            enumeration_constant
+                : IDENTIFIER
+
+            string
+                : STRING_LITERAL
+                | '__func__'
 
         :return: A primary expression.
         """

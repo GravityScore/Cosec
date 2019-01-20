@@ -10,8 +10,8 @@ from typing import cast
 from lexer import Tokens, Tk
 from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier,        \
     FunctionSpecifier, StructSpecifier, UnionSpecifier, EnumSpecifier,        \
-    EnumConst, DeclaratorPointerPart, DeclaratorFunctionPart,                 \
-    DeclaratorArrayPart, DeclarationList, Declaration
+    DeclaratorPointerPart, DeclaratorFunctionPart, DeclaratorArrayPart,       \
+    DeclarationList, Declaration
 from parser import ExpressionList, TernaryExpression, BinaryExpression,       \
     CastExpression, SizeofExpression, UnaryExpression, PostfixExpression,     \
     ArrayAccessExpression, FunctionCallExpression, FieldAccessExpression,     \
@@ -695,9 +695,9 @@ class TestEnumSpecifier(TestCase):
         self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
         e = cast(EnumSpecifier, d.type_specifier.enum)
         self.assertEqual(e.name.contents, "thing")
-        self.assertEqual(len(e.enum_consts), 2)
-        self.assertEqual(e.enum_consts[0].name.contents, "THING1")
-        self.assertEqual(e.enum_consts[1].name.contents, "THING2")
+        self.assertEqual(len(e.consts), 2)
+        self.assertEqual(e.consts[0].name.contents, "THING1")
+        self.assertEqual(e.consts[1].name.contents, "THING2")
 
     def test_anonymous_enum(self):
         t = Tokens("", "enum { THING1, THING2 }")
@@ -706,9 +706,9 @@ class TestEnumSpecifier(TestCase):
         self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
         e = cast(EnumSpecifier, d.type_specifier.enum)
         self.assertTrue(e.name is None)
-        self.assertEqual(len(e.enum_consts), 2)
-        self.assertEqual(e.enum_consts[0].name.contents, "THING1")
-        self.assertEqual(e.enum_consts[1].name.contents, "THING2")
+        self.assertEqual(len(e.consts), 2)
+        self.assertEqual(e.consts[0].name.contents, "THING1")
+        self.assertEqual(e.consts[1].name.contents, "THING2")
 
     def test_incomplete_enum(self):
         t = Tokens("", "enum thing")
@@ -717,7 +717,7 @@ class TestEnumSpecifier(TestCase):
         self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
         e = cast(EnumSpecifier, d.type_specifier.enum)
         self.assertEqual(e.name.contents, "thing")
-        self.assertTrue(e.enum_consts is None)
+        self.assertTrue(e.consts is None)
 
 
 # ******************************************************************************

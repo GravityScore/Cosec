@@ -4,7 +4,7 @@
 # December 2018
 
 from __future__ import annotations
-from typing import Optional, Union, cast
+from typing import Optional, Union
 from enum import Enum
 
 from lexer import Tokens, Token, Tk
@@ -180,8 +180,8 @@ class EnumSpecifier(Node):
 
     def __init__(self, name=None, consts=None):
         super().__init__()
-        self.name = name           # Identifier token
-        self.enum_consts = consts  # EnumConst list (None for incomplete type)
+        self.name = name      # Identifier token
+        self.consts = consts  # EnumConst list (None for incomplete type)
 
 
 class EnumConst(Node):
@@ -687,11 +687,10 @@ class LabelStatement(Statement):
 class Scope:
     """
     A scope stores various lists of identifiers so we can disambiguate between
-    usages. Lists include typedef names and enumeration constants.
+    usages.
     """
 
     def __init__(self):
-        self.enum_consts = []
         self.typedefs = []
 
 
@@ -733,22 +732,6 @@ class Parser:
         # scope first
         for scope in reversed(self.scopes):
             if name in scope.typedefs:
-                return True
-        return False
-
-    def find_enum_const(self, name: str) -> bool:
-        """
-        Checks to see if the given name is an enum constant from some parent
-        scope.
-
-        :param name: The name (as a string) to check.
-        :return:     True if the name was used as an enum constant in a parent
-                     scope.
-        """
-        # Iterate over the scopes in reverse order, so we search the inner-most
-        # scope first
-        for scope in reversed(self.scopes):
-            if name in scope.enum_consts:
                 return True
         return False
 
@@ -839,17 +822,8 @@ class Parser:
             # TODO: associate a token with this error
             raise Error("expected function declaration")
 
-        # Any enum constants used in the function's signature need to be usable
-        # in the function's body, so add them to a new scope
-        signature = cast(DeclaratorFunctionPart, declarator.parts[-1])
-        self.push_scope()
-        # TODO: finish once we've specified how enums work
-
         # Parse a block of statement
         block = self.parse_compound_statement()
-
-        # Destroy the scope we just created
-        self.pop_scope()
 
         # Construct a function definition
         definition = FunctionDefinition(specifiers, declarator, block)

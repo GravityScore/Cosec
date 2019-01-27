@@ -11,16 +11,17 @@ from lexer import Tokens, Tk
 from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier,        \
     FunctionSpecifier, StructSpecifier, UnionSpecifier, EnumSpecifier,        \
     DeclaratorPointerPart, DeclaratorFunctionPart, DeclaratorArrayPart,       \
-    DeclarationList, Declaration
+    DeclarationList, Declaration, InitializerList, StructDesignator,          \
+    ArrayDesignator
 from parser import ExpressionList, TernaryExpression, BinaryExpression,       \
-    CastExpression, SizeofExpression, UnaryExpression, PostfixExpression,     \
-    ArrayAccessExpression, FunctionCallExpression, FieldAccessExpression,     \
-    SymbolExpression, ConstantExpression, BinaryOperator, UnaryOperator
-from parser import FunctionDefinition, Statement, CompoundStatement,          \
-    DeclarationStatement, ExpressionStatement, IfStatementChain, IfStatement, \
-    SwitchStatement, CaseStatement, DefaultStatement, WhileStatement,         \
-    DoWhileStatement, ForStatement, ContinueStatement, BreakStatement,        \
-    ReturnStatement, GotoStatement, LabelStatement
+    CastExpression, SizeofExpression, InitializerExpression, UnaryExpression, \
+    PostfixExpression, ArrayAccessExpression, FunctionCallExpression,         \
+    FieldAccessExpression, SymbolExpression, ConstantExpression,              \
+    BinaryOperator, UnaryOperator
+from parser import CompoundStatement, ExpressionStatement, IfStatementChain,  \
+    IfStatement, SwitchStatement, CaseStatement, DefaultStatement,            \
+    WhileStatement, DoWhileStatement, ForStatement, ContinueStatement,        \
+    BreakStatement, ReturnStatement, GotoStatement, LabelStatement
 
 
 # ******************************************************************************
@@ -720,6 +721,90 @@ class TestEnumSpecifier(TestCase):
         self.assertTrue(e.consts is None)
 
 
+class TestInitializerList(TestCase):
+    def test_single_declaration(self):
+        t = Tokens("", "struct a b = {1, 2, 3};")
+        p = Parser(t)
+        d = p.parse_declaration_list()
+        self.assertEqual(len(d.declarations), 1)
+        d = d.declarations[0]
+        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.STRUCT)
+        s = cast(StructSpecifier, d.specifiers.type_specifier.struct)
+        self.assertEqual(s.name.contents, "a")
+        self.assertTrue(s.fields is None)
+        self.assertEqual(d.declarator.name.contents, "b")
+        self.assertTrue(isinstance(d.initializer, InitializerList))
+        self.assertEqual(len(d.initializer.fields), 3)
+        f = d.initializer.fields[0]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        f = d.initializer.fields[1]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        f = d.initializer.fields[2]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+
+    def test_nested_initializers(self):
+        t = Tokens("", "struct a b = {{1}, {2}};")
+        p = Parser(t)
+        d = p.parse_declaration_list()
+        self.assertEqual(len(d.declarations), 1)
+        d = d.declarations[0]
+        self.assertTrue(isinstance(d.initializer, InitializerList))
+        self.assertEqual(len(d.initializer.fields), 2)
+        f = d.initializer.fields[0]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, InitializerList))
+        self.assertEqual(len(f.initializer.fields), 1)
+        f = d.initializer.fields[1]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, InitializerList))
+        self.assertEqual(len(f.initializer.fields), 1)
+
+    def test_struct_designator(self):
+        t = Tokens("", "struct a b = {.x = 3, .y .z = 4};")
+        p = Parser(t)
+        d = p.parse_declaration_list()
+        self.assertEqual(len(d.declarations), 1)
+        d = d.declarations[0]
+        self.assertTrue(isinstance(d.initializer, InitializerList))
+        self.assertEqual(len(d.initializer.fields), 2)
+        f = d.initializer.fields[0]
+        self.assertEqual(len(f.designators), 1)
+        self.assertTrue(isinstance(f.designators[0], StructDesignator))
+        self.assertEqual(f.designators[0].field.contents, "x")
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        f = d.initializer.fields[1]
+        self.assertEqual(len(f.designators), 2)
+        self.assertTrue(isinstance(f.designators[0], StructDesignator))
+        self.assertEqual(f.designators[0].field.contents, "y")
+        self.assertTrue(isinstance(f.designators[1], StructDesignator))
+        self.assertEqual(f.designators[1].field.contents, "z")
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+
+    def test_array_designator(self):
+        t = Tokens("", "int b[13] = {[10] = 1, [11] [12] = 8};")
+        p = Parser(t)
+        d = p.parse_declaration_list()
+        self.assertEqual(len(d.declarations), 1)
+        d = d.declarations[0]
+        self.assertTrue(isinstance(d.initializer, InitializerList))
+        self.assertEqual(len(d.initializer.fields), 2)
+        f = d.initializer.fields[0]
+        self.assertEqual(len(f.designators), 1)
+        self.assertTrue(isinstance(f.designators[0], ArrayDesignator))
+        self.assertTrue(isinstance(f.designators[0].index, ConstantExpression))
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        f = d.initializer.fields[1]
+        self.assertEqual(len(f.designators), 2)
+        self.assertTrue(isinstance(f.designators[0], ArrayDesignator))
+        self.assertTrue(isinstance(f.designators[0].index, ConstantExpression))
+        self.assertTrue(isinstance(f.designators[1], ArrayDesignator))
+        self.assertTrue(isinstance(f.designators[1].index, ConstantExpression))
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+
+
 # ******************************************************************************
 #     Expression Tests
 # ******************************************************************************
@@ -990,6 +1075,28 @@ class TestBinaryExpressions(TestCase):
         f = cast(ConstantExpression, e.false)
         self.assertEqual(f.value.type, Tk.CONST_INT)
         self.assertEqual(f.value.number, 5)
+
+
+class TestInitializerExpressions(TestCase):
+    def test_initializer(self):
+        t = Tokens("", "(struct a) {1, 2, 3}")
+        p = Parser(t)
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, InitializerExpression))
+        e = cast(InitializerExpression, e)
+        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.STRUCT)
+        s = e.type.specifiers.type_specifier.struct
+        self.assertEqual(s.name.contents, "a")
+        self.assertEqual(len(e.initializer_list.fields), 3)
+        f = e.initializer_list.fields[0]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        f = e.initializer_list.fields[1]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        f = e.initializer_list.fields[2]
+        self.assertEqual(len(f.designators), 0)
+        self.assertTrue(isinstance(f.initializer, ConstantExpression))
 
 
 class TestCastExpressions(TestCase):

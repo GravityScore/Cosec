@@ -245,6 +245,52 @@ class DeclaratorPointerPart(Node):
         self.type_qualifiers = set()
 
 
+class InitializerList(Node):
+    """
+    An initializer in a declaration is either an expression or an initializer
+    list, implicitly creating a struct.
+    """
+
+    def __init__(self, fields: list):
+        super().__init__()
+        self.fields = fields  # List of initializers
+
+
+class Initializer(Node):
+    """
+    An element in an initializer list. Consists of a designator list (possibly
+    empty), and either an expression or another initializer list.
+    """
+
+    def __init__(self, designators: list,
+                 initializer: Union[Expression, InitializerList]):
+        super().__init__()
+        self.designators = designators  # List of struct or array designators
+        self.initializer = initializer  # An expression or initializer list
+
+
+class StructDesignator(Node):
+    """
+    A designator in an initializer list either specifies a struct field or an
+    array index to assign to.
+    """
+
+    def __init__(self, field: Token):
+        super().__init__()
+        self.field = field  # Identifier token specifying the struct field
+
+
+class ArrayDesignator(Node):
+    """
+    A designator in an initializer list either specifies a struct field or an
+    array index to assign to.
+    """
+
+    def __init__(self, index: Expression):
+        super().__init__()
+        self.index = index  # Constant expression
+
+
 # ******************************************************************************
 #     Expressions
 # ******************************************************************************
@@ -323,6 +369,18 @@ class SizeofExpression(Expression):
         super().__init__()
         self.specifiers = specifiers
         self.declarator = declarator
+
+
+class InitializerExpression(Expression):
+    """
+    An initializer expression creates a struct (with an explicit type name) from
+    an initializer list, within an expression.
+    """
+
+    def __init__(self, type: TypeName, initializer_list: InitializerList):
+        super().__init__()
+        self.type = type
+        self.initializer_list = initializer_list
 
 
 class UnaryExpression(Expression):
@@ -850,28 +908,6 @@ class Parser:
                 : declarator '=' initializer
                 | declarator
 
-            initializer
-                : '{' initializer_list '}'      TODO
-                | '{' initializer_list ',' '}'  TODO
-                | assignment_expression
-
-            initializer_list                    TODO
-                : designation initializer
-                | initializer
-                | initializer_list ',' designation initializer
-                | initializer_list ',' initializer
-
-            designation                         TODO
-                : designator_list '='
-
-            designator_list                     TODO
-                : designator
-                | designator_list designator
-
-            designator                          TODO
-                : '[' constant_expression ']'
-                | '.' IDENTIFIER
-
         :return: An array of declarations.
         """
         # Parse a set of declaration specifiers
@@ -888,7 +924,7 @@ class Parser:
             initializer = None
             if self.t.cur().type == Tk.ASSIGN:
                 self.t.next()
-                initializer = self.parse_expression()
+                initializer = self.parse_initializer()
 
             # Add a declaration
             declaration = Declaration(specifiers, declarator, initializer)
@@ -911,6 +947,111 @@ class Parser:
         self.t.expect(Tk.SEMICOLON)
         self.t.next()
         return DeclarationList(declarations)
+
+    def parse_initializer(self) -> Union[Expression, InitializerList]:
+        """
+        Parse an initializer, which can either be an expression or an
+        initializer list. The relevant grammar is:
+
+            initializer
+                : '{' initializer_list '}'
+                | '{' initializer_list ',' '}'
+                | assignment_expression
+
+        :return: An expression or an initializer list
+        """
+        # Check for an initializer list
+        if self.t.cur().type == Tk.OPEN_BRACE:
+            return self.parse_initializer_list()
+        else:
+            return self.parse_expression_root()
+
+    def parse_initializer_list(self) -> InitializerList:
+        """
+        Parse an initializer list, used in declarations and in expressions (when
+        preceded by a type name). The relevant grammar is:
+
+            initializer_list
+                : designation initializer
+                | initializer
+                | initializer_list ',' designation initializer
+                | initializer_list ',' initializer
+
+            designation
+                : designator_list '='
+
+            designator_list
+                : designator
+                | designator_list designator
+
+            designator
+                : '[' constant_expression ']'
+                | '.' IDENTIFIER
+
+        :return: An initializer list.
+        """
+        # Skip the opening brace
+        self.t.expect(Tk.OPEN_BRACE)
+        self.t.next()
+
+        # Keep parsing initializers
+        initializers = []
+        while self.t.cur().type != Tk.CLOSE_BRACE:
+            # Parse a designator list
+            designators = self.parse_designators()
+
+            # Parse an initializer
+            initializer = self.parse_initializer()
+            initializers.append(Initializer(designators, initializer))
+
+            # Parse a comma
+            if self.t.cur().type == Tk.COMMA:
+                self.t.next()
+            else:
+                break
+
+        # Expect a closing brace
+        self.t.expect(Tk.CLOSE_BRACE)
+        self.t.next()
+        return InitializerList(initializers)
+
+    def parse_designators(self) -> list:
+        """
+        Parse a (possibly empty) list of designators, followed by an assignment
+        token.
+
+        :return: A list of designators
+        """
+        # Parse a designator list
+        designators = []
+        while self.t.cur().type == Tk.OPEN_BRACKET or \
+                self.t.cur().type == Tk.DOT:
+            # Skip the opening token
+            type = self.t.cur().type
+            self.t.next()
+
+            # Depending on the type of the designator
+            if type == Tk.OPEN_BRACKET:
+                # Parse a constant expression
+                expr = self.parse_expression_root()
+                designator = ArrayDesignator(expr)
+
+                # Expect a closing bracket
+                self.t.expect(Tk.CLOSE_BRACKET)
+                self.t.next()
+            else:
+                # Expect an identifier
+                self.t.expect(Tk.IDENT)
+                field = self.t.cur()
+                designator = StructDesignator(field)
+                self.t.next()
+            designators.append(designator)
+
+        # If the designator list is non-empty, expect an assignment token
+        if len(designators) > 0:
+            self.t.expect(Tk.ASSIGN)
+            self.t.next()
+        return designators
 
     def parse_type_name(self) -> TypeName:
         """
@@ -1006,25 +1147,30 @@ class Parser:
                 if specifiers.storage_class is not None:
                     raise Error(f"can't have two storage classes", self.t.cur())
                 specifiers.storage_class = StorageClass(type)
+                self.t.next()
             elif type in BUILT_IN_TYPE_TOKENS:
                 # Try parse a type specifier
                 type_tokens.append(type)
                 type_specifier = self.parse_type_specifier(type_tokens)
                 specifiers.type_specifier = type_specifier
+                self.t.next()
             elif type in TYPE_QUALIFIERS:
                 # Add another type qualifier
                 qualifier = TypeQualifier(type)
                 specifiers.type_qualifiers.add(qualifier)
+                self.t.next()
             elif type in FUNCTION_SPECIFIERS:
                 # Add another function specifier
                 specifier = FunctionSpecifier(type)
                 specifiers.function_specifiers.add(specifier)
+                self.t.next()
             elif type == Tk.IDENT and self.find_typedef(self.t.cur().contents):
                 # Check we don't have any other type specifiers
                 if len(type_tokens) > 0:
                     raise Error("can't combine type", self.t.cur())
                 specifiers.type_specifier = TypeSpecifier.TYPEDEF
                 specifiers.type_specifier.typedef_name = self.t.cur().contents
+                self.t.next()
             elif type == Tk.STRUCT:
                 # Check we don't have any other type specifiers
                 if len(type_tokens) > 0:
@@ -1046,7 +1192,6 @@ class Parser:
             else:
                 # Token isn't a valid declaration specifier
                 break
-            self.t.next()
 
         # Check we had a type specifier
         if specifiers.type_specifier is None:
@@ -2161,10 +2306,17 @@ class Parser:
 
         # An open parenthesis here could indicate either a cast or a
         # subexpression; try parsing a type name
+        saved = self.t.save()
         type = self.try_parse_type_name()
 
         if type is None:
             # Failed to parse a type name, try a subexpression
+            return self.parse_sizeof_expression()
+        elif self.t.cur().type == Tk.OPEN_BRACE:
+            # There's a conflict between casting and initializer expressions in
+            # the grammar; we prevent it by ensuring the next token after the
+            # type isn't an open brace (for an initializer list)
+            self.t.restore(saved)
             return self.parse_sizeof_expression()
         else:
             # Check the declarator is abstract
@@ -2253,8 +2405,8 @@ class Parser:
                 | postfix_expression PTR_OP IDENTIFIER
                 | postfix_expression INC_OP
                 | postfix_expression DEC_OP
-                | '(' type_name ')' '{' initializer_list '}'      TODO
-                | '(' type_name ')' '{' initializer_list ',' '}'  TODO
+                | '(' type_name ')' '{' initializer_list '}'
+                | '(' type_name ')' '{' initializer_list ',' '}'
 
             argument_expression_list
                 : assignment_expression
@@ -2262,7 +2414,13 @@ class Parser:
 
         :return: A postfix expression.
         """
-        # Parse a primary expression
+        # Check for a type name in parentheses
+        type = self.try_parse_type_name()
+        if type is not None:
+            initializer_list = self.parse_initializer_list()
+            return InitializerExpression(type, initializer_list)
+
+        # If we reach here, then parse a primary expression
         result = self.parse_primary_expression()
 
         # Continually parse postfix expressions

@@ -9,21 +9,20 @@ from typing import cast
 
 from parser import Parser
 from parser import Tokens, Tk
-from parser.ast import StorageClass, TypeSpecifier, TypeQualifier, \
+from parser import StorageClass, TypeSpecifier, TypeQualifier, \
     FunctionSpecifier, StructSpecifier, UnionSpecifier, EnumSpecifier, \
     DeclaratorPointerPart, DeclaratorFunctionPart, DeclaratorArrayPart, \
     DeclarationList, Declaration, InitializerList, StructDesignator, \
     ArrayDesignator
-from parser.ast import ExpressionList, TernaryExpression, BinaryExpression, \
+from parser import ExpressionList, TernaryExpression, BinaryExpression, \
     CastExpression, SizeofExpression, InitializerExpression, UnaryExpression, \
     PostfixExpression, ArrayAccessExpression, FunctionCallExpression, \
     FieldAccessExpression, SymbolExpression, ConstantExpression, \
     BinaryOperator, UnaryOperator
-from parser.ast import CompoundStatement, ExpressionStatement, \
-    IfStatementChain, IfStatement, SwitchStatement, CaseStatement, \
-    DefaultStatement, WhileStatement, DoWhileStatement, ForStatement, \
-    ContinueStatement, BreakStatement, ReturnStatement, GotoStatement, \
-    LabelStatement
+from parser import CompoundStatement, ExpressionStatement, IfStatementChain, \
+    IfStatement, SwitchStatement, CaseStatement, DefaultStatement, \
+    WhileStatement, DoWhileStatement, ForStatement, ContinueStatement, \
+    BreakStatement, ReturnStatement, GotoStatement, LabelStatement
 
 
 # ******************************************************************************

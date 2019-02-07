@@ -5,7 +5,7 @@
 
 import unittest
 from unittest import TestCase
-from lexer import Tokens, Tk, IntSuffix, FloatSuffix
+from parser.lexer import Tokens, Tk, IntSuffix, FloatSuffix
 
 
 class TestWhitespace(TestCase):

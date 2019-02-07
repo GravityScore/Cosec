@@ -5,7 +5,7 @@
 
 # Import everything into the root level of the parser package.
 from parser.parser import Parser
-from parser.lexer import Tokens, Token, Tk
+from parser.lexer import Tokens, Token, Tk, IntSuffix, FloatSuffix
 from parser.ast import DeclarationSpecifiers, TypeName, StorageClass, \
     StorageClassNode, TypeSpecifier, TypeSpecifierNode, TypeQualifier, \
     TypeQualifierNode, FunctionSpecifier, FunctionSpecifierNode, \

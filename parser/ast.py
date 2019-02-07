@@ -447,7 +447,7 @@ class PostfixExpression(Expression):
     operator is represented using this special expression tree node.
     """
 
-    def __init__(self, operator: UnaryOperator, operand: Expression):
+    def __init__(self, operator: UnaryOperatorNode, operand: Expression):
         super().__init__()
         self.operator = operator
         self.operand = operand

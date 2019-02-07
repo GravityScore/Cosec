@@ -7,21 +7,23 @@ import unittest
 from unittest import TestCase
 from typing import cast
 
-from lexer import Tokens, Tk
-from parser import Parser, StorageClass, TypeSpecifier, TypeQualifier,        \
-    FunctionSpecifier, StructSpecifier, UnionSpecifier, EnumSpecifier,        \
-    DeclaratorPointerPart, DeclaratorFunctionPart, DeclaratorArrayPart,       \
-    DeclarationList, Declaration, InitializerList, StructDesignator,          \
+from parser import Parser
+from parser import Tokens, Tk
+from parser.ast import StorageClass, TypeSpecifier, TypeQualifier, \
+    FunctionSpecifier, StructSpecifier, UnionSpecifier, EnumSpecifier, \
+    DeclaratorPointerPart, DeclaratorFunctionPart, DeclaratorArrayPart, \
+    DeclarationList, Declaration, InitializerList, StructDesignator, \
     ArrayDesignator
-from parser import ExpressionList, TernaryExpression, BinaryExpression,       \
+from parser.ast import ExpressionList, TernaryExpression, BinaryExpression, \
     CastExpression, SizeofExpression, InitializerExpression, UnaryExpression, \
-    PostfixExpression, ArrayAccessExpression, FunctionCallExpression,         \
-    FieldAccessExpression, SymbolExpression, ConstantExpression,              \
+    PostfixExpression, ArrayAccessExpression, FunctionCallExpression, \
+    FieldAccessExpression, SymbolExpression, ConstantExpression, \
     BinaryOperator, UnaryOperator
-from parser import CompoundStatement, ExpressionStatement, IfStatementChain,  \
-    IfStatement, SwitchStatement, CaseStatement, DefaultStatement,            \
-    WhileStatement, DoWhileStatement, ForStatement, ContinueStatement,        \
-    BreakStatement, ReturnStatement, GotoStatement, LabelStatement
+from parser.ast import CompoundStatement, ExpressionStatement, \
+    IfStatementChain, IfStatement, SwitchStatement, CaseStatement, \
+    DefaultStatement, WhileStatement, DoWhileStatement, ForStatement, \
+    ContinueStatement, BreakStatement, ReturnStatement, GotoStatement, \
+    LabelStatement
 
 
 # ******************************************************************************
@@ -35,23 +37,23 @@ class TestDeclarationSpecifiers(TestCase):
         p = Parser(t)
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.storage_class, StorageClass.TYPEDEF)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.storage_class.type, StorageClass.TYPEDEF)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.storage_class, StorageClass.REGISTER)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.storage_class.type, StorageClass.REGISTER)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
     def test_type_qualifiers(self):
         t = Tokens("", "const int; int const; const int restrict; "
@@ -59,56 +61,61 @@ class TestDeclarationSpecifiers(TestCase):
         p = Parser(t)
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, {TypeQualifier.CONST})
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        q = set([x.type for x in s.type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, {TypeQualifier.CONST})
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        q = set([x.type for x in s.type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, {TypeQualifier.CONST,
-                                             TypeQualifier.RESTRICT})
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        q = set([x.type for x in s.type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST, TypeQualifier.RESTRICT})
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, {TypeQualifier.CONST,
-                                             TypeQualifier.VOLATILE,
-                                             TypeQualifier.RESTRICT})
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        q = set([x.type for x in s.type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST, TypeQualifier.VOLATILE,
+                             TypeQualifier.RESTRICT})
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.storage_class, StorageClass.TYPEDEF)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, {TypeQualifier.VOLATILE})
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.storage_class.type, StorageClass.TYPEDEF)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        q = set([x.type for x in s.type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.VOLATILE})
+        self.assertEqual(s.function_specifiers, [])
 
     def test_function_specifiers(self):
         t = Tokens("", "inline void; void inline")
         p = Parser(t)
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.VOID)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, {FunctionSpecifier.INLINE})
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.VOID)
+        self.assertEqual(s.type_qualifiers, [])
+        f = set([x.type for x in s.function_specifiers])
+        self.assertEqual(f, {FunctionSpecifier.INLINE})
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.VOID)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, {FunctionSpecifier.INLINE})
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.VOID)
+        self.assertEqual(s.type_qualifiers, [])
+        f = set([x.type for x in s.function_specifiers])
+        self.assertEqual(f, {FunctionSpecifier.INLINE})
 
     def test_type_specifiers(self):
         t = Tokens("", "int; unsigned; signed int; short; short int; "
@@ -118,79 +125,80 @@ class TestDeclarationSpecifiers(TestCase):
         p = Parser(t)
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.UINT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.UINT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.INT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.INT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.SHORT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.SHORT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.SHORT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.SHORT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.USHORT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.USHORT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.storage_class, StorageClass.EXTERN)
-        self.assertEqual(s.type_specifier, TypeSpecifier.UINT)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.storage_class.type, StorageClass.EXTERN)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.UINT)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.storage_class, StorageClass.STATIC)
-        self.assertEqual(s.type_specifier, TypeSpecifier.LONG)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
-
-        t.next()  # Skip the semicolon
-        s = p.parse_declaration_specifiers()
-        self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.LLONG)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.storage_class.type, StorageClass.STATIC)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.LONG)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
         self.assertTrue(s.storage_class is None)
-        self.assertEqual(s.type_specifier, TypeSpecifier.LLONG)
-        self.assertEqual(s.type_qualifiers, set())
-        self.assertEqual(s.function_specifiers, set())
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.LLONG)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
 
         t.next()  # Skip the semicolon
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.storage_class, StorageClass.STATIC)
-        self.assertEqual(s.type_specifier, TypeSpecifier.LLONG)
-        self.assertEqual(s.type_qualifiers, {TypeQualifier.CONST})
-        self.assertEqual(s.function_specifiers, set())
+        self.assertTrue(s.storage_class is None)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.LLONG)
+        self.assertEqual(s.type_qualifiers, [])
+        self.assertEqual(s.function_specifiers, [])
+
+        t.next()  # Skip the semicolon
+        s = p.parse_declaration_specifiers()
+        self.assertEqual(s.storage_class.type, StorageClass.STATIC)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.LLONG)
+        q = set([x.type for x in s.type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
+        self.assertEqual(s.function_specifiers, [])
 
 
 class TestPointerDeclarators(TestCase):
@@ -210,7 +218,7 @@ class TestPointerDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
+        self.assertEqual(d.parts[0].type_qualifiers, [])
 
     def test_double_pointer(self):
         t = Tokens("", "**a")
@@ -220,9 +228,9 @@ class TestPointerDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
+        self.assertEqual(d.parts[0].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
+        self.assertEqual(d.parts[1].type_qualifiers, [])
 
     def test_single_pointer_with_qualifier(self):
         t = Tokens("", "*const a")
@@ -232,7 +240,8 @@ class TestPointerDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST})
+        q = set([x.type for x in d.parts[0].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
 
     def test_qualifier_order(self):
         t = Tokens("", "*const *a; **const a")
@@ -242,18 +251,20 @@ class TestPointerDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
+        self.assertEqual(d.parts[0].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, {TypeQualifier.CONST})
+        q = set([x.type for x in d.parts[1].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
 
         t.next()  # Skip the semicolon
         d = p.parse_declarator()
         self.assertEqual(d.name.type, Tk.IDENT)
         self.assertEqual(d.name.contents, "a")
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST})
+        q = set([x.type for x in d.parts[0].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
+        self.assertEqual(d.parts[1].type_qualifiers, [])
         self.assertEqual(len(d.parts), 2)
 
     def test_double_pointer_with_qualifiers(self):
@@ -264,9 +275,11 @@ class TestPointerDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.RESTRICT})
+        q = set([x.type for x in d.parts[0].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.RESTRICT})
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, {TypeQualifier.CONST})
+        q = set([x.type for x in d.parts[1].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
 
     def test_multiple_qualifiers(self):
         t = Tokens("", "*const restrict a")
@@ -276,8 +289,8 @@ class TestPointerDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST,
-                                                      TypeQualifier.RESTRICT})
+        q = set([x.type for x in d.parts[0].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST, TypeQualifier.RESTRICT})
 
 
 class TestFunctionDeclarators(TestCase):
@@ -309,7 +322,7 @@ class TestFunctionDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 1)
         arg = d.parts[0].args[0]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(arg.declarator is None)
 
         t.next()  # Skip the semicolon
@@ -320,7 +333,7 @@ class TestFunctionDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 1)
         arg = d.parts[0].args[0]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
@@ -335,7 +348,7 @@ class TestFunctionDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 1)
         arg = d.parts[0].args[0]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
@@ -350,10 +363,10 @@ class TestFunctionDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 2)
         arg = d.parts[0].args[0]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(arg.declarator is None)
         arg = d.parts[0].args[1]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.CHAR)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.CHAR)
         self.assertTrue(arg.declarator is None)
 
         t.next()  # Skip the semicolon
@@ -364,12 +377,12 @@ class TestFunctionDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 2)
         arg = d.parts[0].args[0]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
         arg = d.parts[0].args[1]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.CHAR)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.CHAR)
         self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "c")
         self.assertEqual(len(arg.declarator.parts), 0)
@@ -384,9 +397,9 @@ class TestArrayDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, False)
+        self.assertEqual(d.parts[0].type_qualifiers, [])
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is None)
 
     def test_double_array(self):
         t = Tokens("", "a[][]")
@@ -396,13 +409,13 @@ class TestArrayDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, False)
+        self.assertEqual(d.parts[0].type_qualifiers, [])
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is None)
         self.assertTrue(isinstance(d.parts[1], DeclaratorArrayPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
-        self.assertEqual(d.parts[1].is_vla, False)
-        self.assertEqual(d.parts[1].is_static, False)
+        self.assertEqual(d.parts[1].type_qualifiers, [])
+        self.assertTrue(d.parts[1].vla is None)
+        self.assertTrue(d.parts[1].static is None)
 
     def test_redundant_parentheses(self):
         t = Tokens("", "((((((a[]))))[]))")
@@ -412,13 +425,13 @@ class TestArrayDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, False)
+        self.assertEqual(d.parts[0].type_qualifiers, [])
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is None)
         self.assertTrue(isinstance(d.parts[1], DeclaratorArrayPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
-        self.assertEqual(d.parts[1].is_vla, False)
-        self.assertEqual(d.parts[1].is_static, False)
+        self.assertEqual(d.parts[1].type_qualifiers, [])
+        self.assertTrue(d.parts[1].vla is None)
+        self.assertTrue(d.parts[1].static is None)
 
     def test_static_qualifier(self):
         t = Tokens("", "a[static]")
@@ -428,9 +441,9 @@ class TestArrayDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, True)
+        self.assertEqual(d.parts[0].type_qualifiers, [])
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is not None)
 
     def test_pointer_qualifiers(self):
         t = Tokens("", "a[const restrict]")
@@ -440,10 +453,12 @@ class TestArrayDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST,
-                                                      TypeQualifier.RESTRICT})
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, False)
+        self.assertEqual(len(d.parts[0].type_qualifiers), 2)
+        q = {x.type for x in d.parts[0].type_qualifiers}
+        self.assertTrue(TypeQualifier.CONST in q)
+        self.assertTrue(TypeQualifier.RESTRICT in q)
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is None)
 
     def test_pointer_with_static(self):
         t = Tokens("", "a[const restrict static]")
@@ -453,10 +468,12 @@ class TestArrayDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 1)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST,
-                                                      TypeQualifier.RESTRICT})
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, True)
+        self.assertEqual(len(d.parts[0].type_qualifiers), 2)
+        q = {x.type for x in d.parts[0].type_qualifiers}
+        self.assertTrue(TypeQualifier.CONST in q)
+        self.assertTrue(TypeQualifier.RESTRICT in q)
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is not None)
 
 
 class TestMixedDeclarators(TestCase):
@@ -468,7 +485,7 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
+        self.assertEqual(d.parts[0].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[1], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[1].args), 0)
 
@@ -480,7 +497,8 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST})
+        q = set([x.type for x in d.parts[0].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
         self.assertTrue(isinstance(d.parts[1], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[1].args), 0)
 
@@ -492,11 +510,12 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, {TypeQualifier.CONST})
+        q = set([x.type for x in d.parts[0].type_qualifiers])
+        self.assertEqual(q, {TypeQualifier.CONST})
         self.assertTrue(isinstance(d.parts[1], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[1].args), 1)
         arg = d.parts[1].args[0]
-        self.assertEqual(arg.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(arg.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(arg.declarator.name.type, Tk.IDENT)
         self.assertTrue(arg.declarator.name.contents, "b")
         self.assertEqual(len(arg.declarator.parts), 0)
@@ -511,7 +530,7 @@ class TestMixedDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 0)
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
+        self.assertEqual(d.parts[1].type_qualifiers, [])
 
     def test_redundant_parentheses(self):
         t = Tokens("", "(((*((((a())))))))")
@@ -523,7 +542,7 @@ class TestMixedDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 0)
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
+        self.assertEqual(d.parts[1].type_qualifiers, [])
 
     def test_pointer_to_function_returning_pointer(self):
         t = Tokens("", "*(*a)()")
@@ -533,11 +552,11 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 3)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
+        self.assertEqual(d.parts[0].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[1], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[1].args), 0)
         self.assertTrue(isinstance(d.parts[2], DeclaratorPointerPart))
-        self.assertEqual(d.parts[2].type_qualifiers, set())
+        self.assertEqual(d.parts[2].type_qualifiers, [])
 
     def test_array_of_functions(self):
         t = Tokens("", "(a[])()")
@@ -547,9 +566,9 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 2)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, False)
+        self.assertEqual(d.parts[0].type_qualifiers, [])
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is None)
         self.assertTrue(isinstance(d.parts[1], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[1].args), 0)
 
@@ -561,11 +580,11 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 3)
         self.assertTrue(isinstance(d.parts[0], DeclaratorArrayPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
-        self.assertEqual(d.parts[0].is_vla, False)
-        self.assertEqual(d.parts[0].is_static, False)
+        self.assertEqual(d.parts[0].type_qualifiers, [])
+        self.assertTrue(d.parts[0].vla is None)
+        self.assertTrue(d.parts[0].static is None)
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
+        self.assertEqual(d.parts[1].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[2], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[2].args), 0)
 
@@ -577,13 +596,13 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 4)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
+        self.assertEqual(d.parts[0].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[1], DeclaratorArrayPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
-        self.assertEqual(d.parts[1].is_vla, False)
-        self.assertEqual(d.parts[1].is_static, False)
+        self.assertEqual(d.parts[1].type_qualifiers, [])
+        self.assertTrue(d.parts[1].vla is None)
+        self.assertTrue(d.parts[1].static is None)
         self.assertTrue(isinstance(d.parts[2], DeclaratorPointerPart))
-        self.assertEqual(d.parts[2].type_qualifiers, set())
+        self.assertEqual(d.parts[2].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[3], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[3].args), 0)
 
@@ -597,11 +616,11 @@ class TestMixedDeclarators(TestCase):
         self.assertTrue(isinstance(d.parts[0], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[0].args), 0)
         self.assertTrue(isinstance(d.parts[1], DeclaratorPointerPart))
-        self.assertEqual(d.parts[1].type_qualifiers, set())
+        self.assertEqual(d.parts[1].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[2], DeclaratorArrayPart))
-        self.assertEqual(d.parts[2].type_qualifiers, set())
-        self.assertEqual(d.parts[2].is_vla, False)
-        self.assertEqual(d.parts[2].is_static, False)
+        self.assertEqual(d.parts[2].type_qualifiers, [])
+        self.assertTrue(d.parts[2].vla is None)
+        self.assertTrue(d.parts[2].static is None)
 
     def test_pointer_to_function_returning_pointer_to_function(self):
         t = Tokens("", "(*(*a)(int))(char)")
@@ -611,11 +630,11 @@ class TestMixedDeclarators(TestCase):
         self.assertEqual(d.name.contents, "a")
         self.assertEqual(len(d.parts), 4)
         self.assertTrue(isinstance(d.parts[0], DeclaratorPointerPart))
-        self.assertEqual(d.parts[0].type_qualifiers, set())
+        self.assertEqual(d.parts[0].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[1], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[1].args), 1)
         self.assertTrue(isinstance(d.parts[2], DeclaratorPointerPart))
-        self.assertEqual(d.parts[2].type_qualifiers, set())
+        self.assertEqual(d.parts[2].type_qualifiers, [])
         self.assertTrue(isinstance(d.parts[3], DeclaratorFunctionPart))
         self.assertEqual(len(d.parts[3].args), 1)
 
@@ -628,15 +647,16 @@ class TestTypedef(TestCase):
         d = p.parse_declaration_list()
         self.assertEqual(len(d.declarations), 1)
         d = d.declarations[0]
-        self.assertEqual(d.specifiers.storage_class, StorageClass.TYPEDEF)
-        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.specifiers.storage_class.type, StorageClass.TYPEDEF)
+        self.assertEqual(d.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertEqual(d.declarator.name.contents, "a")
 
         d = p.parse_declaration_list()
         self.assertEqual(len(d.declarations), 1)
         d = d.declarations[0]
-        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.TYPEDEF)
-        self.assertEqual(d.specifiers.type_specifier.typedef_name, "a")
+        s = d.specifiers.type_specifier
+        self.assertEqual(s.type, TypeSpecifier.TYPEDEF)
+        self.assertEqual(s.typedef_name, "a")
         self.assertEqual(d.declarator.name.contents, "b")
         p.pop_scope()
 
@@ -646,31 +666,31 @@ class TestStructSpecifier(TestCase):
         t = Tokens("", "struct thing { int a; }")
         p = Parser(t)
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.type_specifier, TypeSpecifier.STRUCT)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.STRUCT)
         s = cast(StructSpecifier, s.type_specifier.struct)
         self.assertEqual(s.name.contents, "thing")
         self.assertEqual(len(s.fields), 1)
         d = cast(Declaration, s.fields[0])
-        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertEqual(d.declarator.name.contents, "a")
 
     def test_anonymous_struct(self):
         t = Tokens("", "struct { int a; }")
         p = Parser(t)
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.type_specifier, TypeSpecifier.STRUCT)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.STRUCT)
         s = cast(StructSpecifier, s.type_specifier.struct)
         self.assertTrue(s.name is None)
         self.assertEqual(len(s.fields), 1)
         d = cast(Declaration, s.fields[0])
-        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertEqual(d.declarator.name.contents, "a")
 
     def test_incomplete_struct(self):
         t = Tokens("", "struct thing")
         p = Parser(t)
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.type_specifier, TypeSpecifier.STRUCT)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.STRUCT)
         s = cast(StructSpecifier, s.type_specifier.struct)
         self.assertEqual(s.name.contents, "thing")
         self.assertTrue(s.fields is None)
@@ -679,12 +699,12 @@ class TestStructSpecifier(TestCase):
         t = Tokens("", "union thing { int a; }")
         p = Parser(t)
         s = p.parse_declaration_specifiers()
-        self.assertEqual(s.type_specifier, TypeSpecifier.UNION)
+        self.assertEqual(s.type_specifier.type, TypeSpecifier.UNION)
         s = cast(UnionSpecifier, s.type_specifier.union)
         self.assertEqual(s.name.contents, "thing")
         self.assertEqual(len(s.fields), 1)
         d = cast(Declaration, s.fields[0])
-        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(d.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertEqual(d.declarator.name.contents, "a")
 
 
@@ -693,7 +713,7 @@ class TestEnumSpecifier(TestCase):
         t = Tokens("", "enum thing { THING1, THING2 }")
         p = Parser(t)
         d = p.parse_declaration_specifiers()
-        self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
+        self.assertEqual(d.type_specifier.type, TypeSpecifier.ENUM)
         e = cast(EnumSpecifier, d.type_specifier.enum)
         self.assertEqual(e.name.contents, "thing")
         self.assertEqual(len(e.consts), 2)
@@ -704,7 +724,7 @@ class TestEnumSpecifier(TestCase):
         t = Tokens("", "enum { THING1, THING2 }")
         p = Parser(t)
         d = p.parse_declaration_specifiers()
-        self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
+        self.assertEqual(d.type_specifier.type, TypeSpecifier.ENUM)
         e = cast(EnumSpecifier, d.type_specifier.enum)
         self.assertTrue(e.name is None)
         self.assertEqual(len(e.consts), 2)
@@ -715,7 +735,7 @@ class TestEnumSpecifier(TestCase):
         t = Tokens("", "enum thing")
         p = Parser(t)
         d = p.parse_declaration_specifiers()
-        self.assertEqual(d.type_specifier, TypeSpecifier.ENUM)
+        self.assertEqual(d.type_specifier.type, TypeSpecifier.ENUM)
         e = cast(EnumSpecifier, d.type_specifier.enum)
         self.assertEqual(e.name.contents, "thing")
         self.assertTrue(e.consts is None)
@@ -728,7 +748,7 @@ class TestInitializerList(TestCase):
         d = p.parse_declaration_list()
         self.assertEqual(len(d.declarations), 1)
         d = d.declarations[0]
-        self.assertEqual(d.specifiers.type_specifier, TypeSpecifier.STRUCT)
+        self.assertEqual(d.specifiers.type_specifier.type, TypeSpecifier.STRUCT)
         s = cast(StructSpecifier, d.specifiers.type_specifier.struct)
         self.assertEqual(s.name.contents, "a")
         self.assertTrue(s.fields is None)
@@ -737,13 +757,13 @@ class TestInitializerList(TestCase):
         self.assertEqual(len(d.initializer.fields), 3)
         f = d.initializer.fields[0]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
         f = d.initializer.fields[1]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
         f = d.initializer.fields[2]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
 
     def test_nested_initializers(self):
         t = Tokens("", "struct a b = {{1}, {2}};")
@@ -755,12 +775,12 @@ class TestInitializerList(TestCase):
         self.assertEqual(len(d.initializer.fields), 2)
         f = d.initializer.fields[0]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, InitializerList))
-        self.assertEqual(len(f.initializer.fields), 1)
+        self.assertTrue(isinstance(f.value, InitializerList))
+        self.assertEqual(len(f.value.fields), 1)
         f = d.initializer.fields[1]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, InitializerList))
-        self.assertEqual(len(f.initializer.fields), 1)
+        self.assertTrue(isinstance(f.value, InitializerList))
+        self.assertEqual(len(f.value.fields), 1)
 
     def test_struct_designator(self):
         t = Tokens("", "struct a b = {.x = 3, .y .z = 4};")
@@ -774,14 +794,14 @@ class TestInitializerList(TestCase):
         self.assertEqual(len(f.designators), 1)
         self.assertTrue(isinstance(f.designators[0], StructDesignator))
         self.assertEqual(f.designators[0].field.contents, "x")
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
         f = d.initializer.fields[1]
         self.assertEqual(len(f.designators), 2)
         self.assertTrue(isinstance(f.designators[0], StructDesignator))
         self.assertEqual(f.designators[0].field.contents, "y")
         self.assertTrue(isinstance(f.designators[1], StructDesignator))
         self.assertEqual(f.designators[1].field.contents, "z")
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
 
     def test_array_designator(self):
         t = Tokens("", "int b[13] = {[10] = 1, [11] [12] = 8};")
@@ -795,14 +815,14 @@ class TestInitializerList(TestCase):
         self.assertEqual(len(f.designators), 1)
         self.assertTrue(isinstance(f.designators[0], ArrayDesignator))
         self.assertTrue(isinstance(f.designators[0].index, ConstantExpression))
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
         f = d.initializer.fields[1]
         self.assertEqual(len(f.designators), 2)
         self.assertTrue(isinstance(f.designators[0], ArrayDesignator))
         self.assertTrue(isinstance(f.designators[0].index, ConstantExpression))
         self.assertTrue(isinstance(f.designators[1], ArrayDesignator))
         self.assertTrue(isinstance(f.designators[1].index, ConstantExpression))
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
 
 
 # ******************************************************************************
@@ -837,7 +857,7 @@ class TestUnaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.NEG)
+        self.assertEqual(e.operator.operator, UnaryOperator.NEG)
         e = e.operand
         self.assertTrue(isinstance(e, SymbolExpression))
         e = cast(SymbolExpression, e)
@@ -848,7 +868,7 @@ class TestUnaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.LOGICAL_NOT)
+        self.assertEqual(e.operator.operator, UnaryOperator.LOGICAL_NOT)
         e = e.operand
         self.assertTrue(isinstance(e, SymbolExpression))
         e = cast(SymbolExpression, e)
@@ -861,30 +881,11 @@ class TestUnaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.NEG)
+        self.assertEqual(e.operator.operator, UnaryOperator.NEG)
         e = e.operand
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.NEG)
-        e = e.operand
-        self.assertTrue(isinstance(e, ConstantExpression))
-        e = cast(ConstantExpression, e)
-        self.assertTrue(e.value.type, Tk.CONST_INT)
-        self.assertTrue(e.value.number, 3)
-
-        t.next()  # Skip the semicolon
-        e = p.parse_expression()
-        self.assertTrue(isinstance(e, UnaryExpression))
-        e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.NEG)
-        e = e.operand
-        self.assertTrue(isinstance(e, UnaryExpression))
-        e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.NEG)
-        e = e.operand
-        self.assertTrue(isinstance(e, UnaryExpression))
-        e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.NEG)
+        self.assertEqual(e.operator.operator, UnaryOperator.NEG)
         e = e.operand
         self.assertTrue(isinstance(e, ConstantExpression))
         e = cast(ConstantExpression, e)
@@ -895,15 +896,34 @@ class TestUnaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.DEREF)
+        self.assertEqual(e.operator.operator, UnaryOperator.NEG)
         e = e.operand
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.ADDR)
+        self.assertEqual(e.operator.operator, UnaryOperator.NEG)
         e = e.operand
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.DEREF)
+        self.assertEqual(e.operator.operator, UnaryOperator.NEG)
+        e = e.operand
+        self.assertTrue(isinstance(e, ConstantExpression))
+        e = cast(ConstantExpression, e)
+        self.assertTrue(e.value.type, Tk.CONST_INT)
+        self.assertTrue(e.value.number, 3)
+
+        t.next()  # Skip the semicolon
+        e = p.parse_expression()
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator.operator, UnaryOperator.DEREF)
+        e = e.operand
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator.operator, UnaryOperator.ADDR)
+        e = e.operand
+        self.assertTrue(isinstance(e, UnaryExpression))
+        e = cast(UnaryExpression, e)
+        self.assertEqual(e.operator.operator, UnaryOperator.DEREF)
         e = e.operand
         self.assertTrue(isinstance(e, SymbolExpression))
         e = cast(SymbolExpression, e)
@@ -916,7 +936,7 @@ class TestUnaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.DEC)
+        self.assertEqual(e.operator.operator, UnaryOperator.DEC)
         e = e.operand
         self.assertTrue(isinstance(e, ConstantExpression))
         e = cast(ConstantExpression, e)
@@ -927,7 +947,7 @@ class TestUnaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.INC)
+        self.assertEqual(e.operator.operator, UnaryOperator.INC)
         e = e.operand
         self.assertTrue(isinstance(e, SymbolExpression))
         e = cast(SymbolExpression, e)
@@ -942,7 +962,7 @@ class TestSizeofExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, UnaryExpression))
         e = cast(UnaryExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.SIZEOF)
+        self.assertEqual(e.operator.operator, UnaryOperator.SIZEOF)
         e = e.operand
         self.assertTrue(isinstance(e, SymbolExpression))
         e = cast(SymbolExpression, e)
@@ -955,7 +975,7 @@ class TestSizeofExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, SizeofExpression))
         e = cast(SizeofExpression, e)
-        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(e.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(e.declarator is None)
 
     def test_sizeof_with_declarator(self):
@@ -964,7 +984,7 @@ class TestSizeofExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, SizeofExpression))
         e = cast(SizeofExpression, e)
-        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(e.specifiers.type_specifier.type, TypeSpecifier.INT)
         d = e.declarator
         self.assertTrue(d.name is None)
         self.assertEqual(len(d.parts), 1)
@@ -978,7 +998,7 @@ class TestBinaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, BinaryExpression))
         e = cast(BinaryExpression, e)
-        self.assertEqual(e.operator, BinaryOperator.ADD)
+        self.assertEqual(e.operator.operator, BinaryOperator.ADD)
         self.assertTrue(isinstance(e.left, ConstantExpression))
         self.assertTrue(isinstance(e.right, ConstantExpression))
         l = cast(ConstantExpression, e.left)
@@ -994,11 +1014,11 @@ class TestBinaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, BinaryExpression))
         e = cast(BinaryExpression, e)
-        self.assertEqual(e.operator, BinaryOperator.ADD)
+        self.assertEqual(e.operator.operator, BinaryOperator.ADD)
         self.assertTrue(isinstance(e.left, BinaryExpression))
         self.assertTrue(isinstance(e.right, ConstantExpression))
         l = cast(BinaryExpression, e.left)
-        self.assertEqual(l.operator, BinaryOperator.ADD)
+        self.assertEqual(l.operator.operator, BinaryOperator.ADD)
         self.assertTrue(isinstance(l.left, ConstantExpression))
         self.assertTrue(isinstance(l.right, ConstantExpression))
         ll = cast(ConstantExpression, l.left)
@@ -1017,14 +1037,14 @@ class TestBinaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, BinaryExpression))
         e = cast(BinaryExpression, e)
-        self.assertEqual(e.operator, BinaryOperator.ADD)
+        self.assertEqual(e.operator.operator, BinaryOperator.ADD)
         self.assertTrue(isinstance(e.left, ConstantExpression))
         self.assertTrue(isinstance(e.right, BinaryExpression))
         l = cast(ConstantExpression, e.left)
         self.assertEqual(l.value.type, Tk.CONST_INT)
         self.assertEqual(l.value.number, 3)
         r = cast(BinaryExpression, e.right)
-        self.assertEqual(r.operator, BinaryOperator.MUL)
+        self.assertEqual(r.operator.operator, BinaryOperator.MUL)
         self.assertTrue(isinstance(r.left, ConstantExpression))
         self.assertTrue(isinstance(r.right, ConstantExpression))
         rl = cast(ConstantExpression, r.left)
@@ -1040,11 +1060,11 @@ class TestBinaryExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, BinaryExpression))
         e = cast(BinaryExpression, e)
-        self.assertEqual(e.operator, BinaryOperator.MUL)
+        self.assertEqual(e.operator.operator, BinaryOperator.MUL)
         self.assertTrue(isinstance(e.left, BinaryExpression))
         self.assertTrue(isinstance(e.right, ConstantExpression))
         l = cast(BinaryExpression, e.left)
-        self.assertEqual(l.operator, BinaryOperator.ADD)
+        self.assertEqual(l.operator.operator, BinaryOperator.ADD)
         self.assertTrue(isinstance(l.left, ConstantExpression))
         self.assertTrue(isinstance(l.right, ConstantExpression))
         ll = cast(ConstantExpression, l.left)
@@ -1084,19 +1104,19 @@ class TestInitializerExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, InitializerExpression))
         e = cast(InitializerExpression, e)
-        self.assertEqual(e.type.specifiers.type_specifier, TypeSpecifier.STRUCT)
+        self.assertEqual(e.type.specifiers.type_specifier.type, TypeSpecifier.STRUCT)
         s = e.type.specifiers.type_specifier.struct
         self.assertEqual(s.name.contents, "a")
         self.assertEqual(len(e.initializer_list.fields), 3)
         f = e.initializer_list.fields[0]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
         f = e.initializer_list.fields[1]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
         f = e.initializer_list.fields[2]
         self.assertEqual(len(f.designators), 0)
-        self.assertTrue(isinstance(f.initializer, ConstantExpression))
+        self.assertTrue(isinstance(f.value, ConstantExpression))
 
 
 class TestCastExpressions(TestCase):
@@ -1106,7 +1126,7 @@ class TestCastExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, CastExpression))
         e = cast(CastExpression, e)
-        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(e.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertTrue(e.declarator is None)
         self.assertTrue(isinstance(e.operand, ConstantExpression))
         e = cast(ConstantExpression, e.operand)
@@ -1119,7 +1139,7 @@ class TestCastExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, CastExpression))
         e = cast(CastExpression, e)
-        self.assertEqual(e.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(e.specifiers.type_specifier.type, TypeSpecifier.INT)
         d = e.declarator
         self.assertTrue(d.name is None)
         self.assertEqual(len(d.parts), 1)
@@ -1137,7 +1157,7 @@ class TestPostfixExpressions(TestCase):
         e = p.parse_expression()
         self.assertTrue(isinstance(e, PostfixExpression))
         e = cast(PostfixExpression, e)
-        self.assertEqual(e.operator, UnaryOperator.DEC)
+        self.assertEqual(e.operator.operator, UnaryOperator.DEC)
         e = e.operand
         self.assertTrue(isinstance(e, ConstantExpression))
         e = cast(ConstantExpression, e)
@@ -1230,7 +1250,7 @@ class TestPostfixExpressions(TestCase):
         self.assertEqual(e.name.contents, "b")
         self.assertTrue(isinstance(e.struct, UnaryExpression))
         e = cast(UnaryExpression, e.struct)
-        self.assertEqual(e.operator, UnaryOperator.DEREF)
+        self.assertEqual(e.operator.operator, UnaryOperator.DEREF)
         self.assertTrue(isinstance(e.operand, SymbolExpression))
         e = cast(SymbolExpression, e.operand)
         self.assertEqual(e.name.type, Tk.IDENT)
@@ -1500,16 +1520,16 @@ class TestIterationStatements(TestCase):
         i = cast(DeclarationList, s.initializer)
         self.assertEqual(len(i.declarations), 1)
         i = cast(Declaration, s.initializer.declarations[0])
-        self.assertEqual(i.specifiers.type_specifier, TypeSpecifier.INT)
+        self.assertEqual(i.specifiers.type_specifier.type, TypeSpecifier.INT)
         self.assertEqual(i.declarator.name.contents, "i")
         self.assertEqual(len(i.declarator.parts), 0)
         self.assertTrue(isinstance(i.initializer, ConstantExpression))
         c = cast(BinaryExpression, s.condition)
-        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertEqual(c.operator.operator, BinaryOperator.LT)
         self.assertTrue(isinstance(c.left, SymbolExpression))
         self.assertTrue(isinstance(c.right, ConstantExpression))
         i = cast(PostfixExpression, s.increment)
-        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertEqual(i.operator.operator, UnaryOperator.INC)
         self.assertTrue(isinstance(i.operand, SymbolExpression))
 
     def test_for_with_expression(self):
@@ -1522,15 +1542,15 @@ class TestIterationStatements(TestCase):
         self.assertTrue(isinstance(s.condition, BinaryExpression))
         self.assertTrue(isinstance(s.increment, PostfixExpression))
         i = cast(BinaryExpression, s.initializer)
-        self.assertEqual(i.operator, BinaryOperator.ASSIGN)
+        self.assertEqual(i.operator.operator, BinaryOperator.ASSIGN)
         self.assertTrue(isinstance(i.left, SymbolExpression))
         self.assertTrue(isinstance(i.right, ConstantExpression))
         c = cast(BinaryExpression, s.condition)
-        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertEqual(c.operator.operator, BinaryOperator.LT)
         self.assertTrue(isinstance(c.left, SymbolExpression))
         self.assertTrue(isinstance(c.right, ConstantExpression))
         i = cast(PostfixExpression, s.increment)
-        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertEqual(i.operator.operator, UnaryOperator.INC)
         self.assertTrue(isinstance(i.operand, SymbolExpression))
 
     def test_for_missing_initializer(self):
@@ -1543,11 +1563,11 @@ class TestIterationStatements(TestCase):
         self.assertTrue(isinstance(s.condition, BinaryExpression))
         self.assertTrue(isinstance(s.increment, PostfixExpression))
         c = cast(BinaryExpression, s.condition)
-        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertEqual(c.operator.operator, BinaryOperator.LT)
         self.assertTrue(isinstance(c.left, SymbolExpression))
         self.assertTrue(isinstance(c.right, ConstantExpression))
         i = cast(PostfixExpression, s.increment)
-        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertEqual(i.operator.operator, UnaryOperator.INC)
         self.assertTrue(isinstance(i.operand, SymbolExpression))
 
     def test_for_missing_condition(self):
@@ -1560,11 +1580,11 @@ class TestIterationStatements(TestCase):
         self.assertTrue(s.condition is None)
         self.assertTrue(isinstance(s.increment, PostfixExpression))
         i = cast(BinaryExpression, s.initializer)
-        self.assertEqual(i.operator, BinaryOperator.ASSIGN)
+        self.assertEqual(i.operator.operator, BinaryOperator.ASSIGN)
         self.assertTrue(isinstance(i.left, SymbolExpression))
         self.assertTrue(isinstance(i.right, ConstantExpression))
         i = cast(PostfixExpression, s.increment)
-        self.assertEqual(i.operator, UnaryOperator.INC)
+        self.assertEqual(i.operator.operator, UnaryOperator.INC)
         self.assertTrue(isinstance(i.operand, SymbolExpression))
 
     def test_for_missing_increment(self):
@@ -1577,11 +1597,11 @@ class TestIterationStatements(TestCase):
         self.assertTrue(isinstance(s.condition, BinaryExpression))
         self.assertTrue(s.increment is None)
         i = cast(BinaryExpression, s.initializer)
-        self.assertEqual(i.operator, BinaryOperator.ASSIGN)
+        self.assertEqual(i.operator.operator, BinaryOperator.ASSIGN)
         self.assertTrue(isinstance(i.left, SymbolExpression))
         self.assertTrue(isinstance(i.right, ConstantExpression))
         c = cast(BinaryExpression, s.condition)
-        self.assertEqual(c.operator, BinaryOperator.LT)
+        self.assertEqual(c.operator.operator, BinaryOperator.LT)
         self.assertTrue(isinstance(c.left, SymbolExpression))
         self.assertTrue(isinstance(c.right, ConstantExpression))
 

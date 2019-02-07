@@ -121,7 +121,7 @@ class Lexer:
         """
         # End of file
         if self.scanner.is_eof():
-            return self.token(Tk.EOF, 0)
+            return self.scanner.token(Tk.EOF)
 
         # Whitespace
         if self.scanner.cur().isspace():
@@ -153,7 +153,7 @@ class Lexer:
         :return: An identifier token.
         """
         # Find the first non-alphabetic, non-numeric character
-        token = self.token(Tk.IDENT, 0)
+        token = self.scanner.token(Tk.IDENT)
         while not self.scanner.is_eof() and \
                 is_ident_continue(self.scanner.cur()):
             self.scanner.next()
@@ -189,7 +189,7 @@ class Lexer:
 
         :return: A number token.
         """
-        token = self.token(Tk.CONST_FLOAT, 0)
+        token = self.scanner.token(Tk.CONST_FLOAT)
         token.start -= 2  # Include the hex prefix
         start = self.scanner.cursor
 
@@ -262,7 +262,7 @@ class Lexer:
 
         :return: A number token.
         """
-        token = self.token(Tk.CONST_FLOAT, 0)
+        token = self.scanner.token(Tk.CONST_FLOAT)
         token.start -= 2  # Include the hex prefix
         start = self.scanner.cursor
 
@@ -320,7 +320,7 @@ class Lexer:
         predicate = predicates[base]
 
         # Consume a series of valid digits
-        token = self.token(Tk.CONST_INT, 0)
+        token = self.scanner.token(Tk.CONST_INT)
         while predicate(self.scanner.cur()):
             self.scanner.next()
 
@@ -384,29 +384,10 @@ class Lexer:
         # Iterate over syntax tokens in order
         for syntax in SYNTAX_TOKENS:
             if self.scanner.slice(len(syntax.value)) == syntax.value:
-                token = self.token(syntax, len(syntax.value))
+                token = self.scanner.token(syntax, len(syntax.value))
                 self.scanner.consume(len(syntax.value))
                 return token
         return None
-
-    def token(self, type: Tk, length: int) -> Token:
-        """
-        Creates a new token with the given type and arrow length. Copies across
-        the file, line, and column information from the scanner.
-
-        :param type:   The type of token to create.
-        :param length: The length of the token.
-        :return:       The new token.
-        """
-        token = Token(type)
-        token.file = self.scanner.file
-        token.start = self.scanner.cursor
-        token.line_num = self.scanner.line_num
-        token.column_num = self.scanner.column_num
-        token.line = self.scanner.line
-        token.source = self.scanner.source
-        token.set_length(length)
-        return token
 
 
 class Scanner:
@@ -534,6 +515,25 @@ class Scanner:
         while not self.is_eof() and self.cur().isspace():
             self.next()
 
+    def token(self, type: Tk, length: int = 0) -> Token:
+        """
+        Creates a new token with the given type and arrow length. Copies across
+        the file, line, and column information from the scanner.
+
+        :param type:   The type of token to create.
+        :param length: The length of the token.
+        :return:       The new token.
+        """
+        token = Token(type)
+        token.file = self.file
+        token.start = self.cursor
+        token.line_num = self.line_num
+        token.column_num = self.column_num
+        token.line = self.line
+        token.source = self.source
+        token.set_length(length)
+        return token
+
     def err(self, description: str, offset: int, length: int):
         """
         Triggers a compiler error with the given description. The arrow starts
@@ -541,15 +541,16 @@ class Scanner:
         has the given length.
 
         :param description:  The error message to display.
-        :param offset: The offset from the cursor position to start the
+        :param offset:       The offset from the cursor position to start the
                              arrow at.
         :param length:       The length of the arrow.
         """
-        err = Error(description)
-        err.set_file(self.file)
-        err.set_location(self.line_num, self.column_num + offset, self.line)
-        err.set_length(length)
-        raise err
+        # Create a fake token at the given offset and length
+        tk = self.token(Tk.EOF)
+        tk.start = self.cursor + offset
+        tk.column_num = self.column_num + offset
+        tk.set_length(length)
+        raise Error(description, tk)
 
 
 class Tk(Enum):
@@ -704,7 +705,7 @@ class Token:
         else:
             return TOKEN_NAMES[self.type]
 
-    def combine(self, end: Token) -> Token:
+    def merge(self, end: Token) -> Token:
         """
         Combine all tokens between this token and the end token into one large
         token, for use with errors.
@@ -713,13 +714,16 @@ class Token:
         :return:    A token formed by combining all tokens between this one and
                     'end'.
         """
+        if end is None:
+            return self
+
         # Ensure the start and end tokens are from the same file
         assert(self.file == end.file)
         assert(self.source == end.source)
 
         # Ensure the start token is before the end token
         if self.start > end.start:
-            return end.combine(self)  # Swap the order
+            return end.merge(self)  # Swap the order
 
         # Create the combined token
         token = Token(Tk.COMBINED)

@@ -9,8 +9,9 @@ import os.path
 import platform
 import subprocess
 
-from lexer import Tokens
+from parser import Tokens
 from parser import Parser
+
 from error import Error, Color, print_color
 
 
@@ -113,11 +114,11 @@ def assert_platform():
     """
     # Check operating system
     if sys.platform != "darwin":
-        raise Error("Only macOS is supported (for now)")
+        raise Error("only macOS is supported (for now)")
 
     # Check processor architecture
     if platform.machine() != "x86_64":
-        raise Error("Only x86-64 platforms are supported (for now)")
+        raise Error("only x86-64 platforms are supported (for now)")
 
 
 def process_files(files, exec_file):
@@ -197,7 +198,7 @@ def assemble(asm_file, obj_file):
     if sys.platform == "darwin":
         assembler_options = []
     else:
-        raise Error("Only macOS is supported")
+        raise Error("only macOS is supported")
 
     # Invoke the assembler
     try:
@@ -219,7 +220,7 @@ def link(obj_files, exec_file):
     if sys.platform == "darwin":
         assembler_options = ["-macosx_version_min", "10.7", "-no_pie"]
     else:
-        raise Error("Only macOS is supported")
+        raise Error("only macOS is supported")
 
     # Invoke the linker
     try:
